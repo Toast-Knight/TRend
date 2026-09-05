@@ -43,7 +43,14 @@ jobs:
 
       - name: Test all features on Windows
         if: runner.os == 'Windows'
-        run: cargo test --workspace --all-features
+        # GitHub's Windows image lacks the optional Media Foundation VP8/VP9
+        # transforms. Codec-equipped hosts cover these through test_windows.bat.
+        run: >-
+          cargo test --workspace --all-features --
+          --skip experimental_webm
+          --skip experimental_mkv
+          --skip opens_and_renders_webm
+          --skip opens_and_renders_mkv
 
       - name: Run Python integration tests
         env:
