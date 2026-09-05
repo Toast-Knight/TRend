@@ -1,0 +1,25 @@
+[package]
+name = "trend-image"
+version = "0.1.0"
+edition = "2024"
+description = "Optional bounded image decoders for TRend"
+license = "Apache-2.0"
+repository = "https://github.com/DigitalDolos/TRend"
+publish = false
+
+[features]
+webp = ["dep:image-webp"]
+webp-spike = ["webp"]
+
+[dependencies]
+image-webp = { version = "0.2.4", optional = true }
+jpeg-decoder = { version = "0.3.2", default-features = false }
+png = { version = "0.18.1", default-features = false }
+trend = { path = "../.." }
+
+[dev-dependencies]
+jpeg-encoder = { version = "0.6.1", default-features = false }
+
+[[example]]
+name = "webp_spike"
+required-features = ["webp-spike"]

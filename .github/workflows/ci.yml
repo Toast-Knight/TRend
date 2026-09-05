@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Rust quality (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install Linux video build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes pkg-config libvpx-dev
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint default workspace
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test default workspace
+        run: cargo test --workspace
+
+      - name: Check all features on Linux
+        if: runner.os == 'Linux'
+        run: cargo check --workspace --all-targets --all-features
+
+      - name: Test all features on Windows
+        if: runner.os == 'Windows'
+        run: cargo test --workspace --all-features
+
+      - name: Run Python integration tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: >-
+          python -m unittest
+          "Test runs Envs/Python TUI/test_trend_tui.py"
+          "Test runs Envs/Python Video Player/test_player.py"

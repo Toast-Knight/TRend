@@ -1,0 +1,28 @@
+[package]
+name = "trend-test-viewer"
+version = "0.1.0"
+edition = "2024"
+description = "Developer console viewer for TRend media fixtures"
+license = "Apache-2.0"
+repository = "https://github.com/DigitalDolos/TRend"
+publish = false
+
+[features]
+webp = ["trend-animation/webp", "trend-image/webp"]
+webp-spike = ["webp"]
+webm = ["trend-video/webm"]
+linux-webm = ["webm", "trend-video/linux-webm"]
+mkv = ["trend-video/mkv"]
+linux-mkv = ["mkv", "trend-video/linux-mkv"]
+linux-h264 = ["mkv", "trend-video/linux-h264"]
+avi = ["trend-video/avi"]
+mov = ["trend-video/mov"]
+
+[dependencies]
+trend = { path = "../.." }
+trend-animation = { path = "../../adapters/animation" }
+trend-image = { path = "../../adapters/image" }
+trend-video = { path = "../../adapters/video" }
+
+[target.'cfg(not(windows))'.dependencies]
+crossterm = "0.29.0"

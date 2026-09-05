@@ -1,0 +1,12 @@
+[package]
+name = "trend-python-tui-bridge"
+version = "0.1.0"
+edition = "2024"
+description = "Optional media bridge for the Python terminal integration laboratory"
+license = "Apache-2.0"
+repository = "https://github.com/DigitalDolos/TRend"
+publish = false
+
+[dependencies]
+trend = { path = "../.." }
+trend-media = { path = "../../adapters/media" }

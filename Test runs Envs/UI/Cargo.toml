@@ -1,0 +1,14 @@
+[package]
+name = "trend-ui-lab"
+version = "0.1.0"
+edition = "2024"
+description = "Isolated native UI integration laboratory for TRend"
+license = "Apache-2.0"
+repository = "https://github.com/DigitalDolos/TRend"
+publish = false
+
+[dependencies]
+trend = { path = "../.." }
+trend-animation = { path = "../../adapters/animation" }
+trend-image = { path = "../../adapters/image" }
+trend-video = { path = "../../adapters/video" }

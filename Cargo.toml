@@ -1,0 +1,38 @@
+[package]
+name = "trend"
+version = "0.1.0"
+edition = "2024"
+description = "Small, dependency-free terminal rendering core"
+license = "Apache-2.0"
+repository = "https://github.com/DigitalDolos/TRend"
+homepage = "https://github.com/DigitalDolos/TRend"
+publish = false
+
+[workspace]
+members = [
+	"adapters/animation",
+	"adapters/image",
+	"adapters/media",
+	"adapters/video",
+	"Test runs Envs/UI",
+	"tools/python-tui-bridge",
+	"tools/test-viewer",
+]
+default-members = ["."]
+resolver = "3"
+
+[lib]
+name = "trend"
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default = []
+
+[dependencies]
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = "s"
+panic = "abort"
+strip = "symbols"

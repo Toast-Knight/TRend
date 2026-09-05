@@ -1,0 +1,16 @@
+[package]
+name = "trend-animation"
+version = "0.1.0"
+edition = "2024"
+description = "Optional bounded animated-image decoders for TRend"
+license = "Apache-2.0"
+repository = "https://github.com/DigitalDolos/TRend"
+publish = false
+
+[features]
+webp = ["dep:image-webp"]
+
+[dependencies]
+gif = { version = "0.14.2", default-features = false, features = ["std"] }
+image-webp = { version = "0.2.4", optional = true }
+trend = { path = "../.." }

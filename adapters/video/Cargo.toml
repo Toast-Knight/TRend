@@ -1,0 +1,33 @@
+[package]
+name = "trend-video"
+version = "0.1.0"
+edition = "2024"
+description = "Optional bounded video decoders for TRend"
+license = "Apache-2.0"
+repository = "https://github.com/DigitalDolos/TRend"
+publish = false
+
+[features]
+webm = []
+linux-webm = ["webm", "dep:libvpx-native-sys", "dep:matroska-demuxer"]
+mkv = []
+linux-mkv = ["mkv", "dep:libvpx-native-sys", "dep:matroska-demuxer"]
+linux-h264 = ["mkv", "dep:matroska-demuxer", "dep:openh264"]
+avi = []
+mov = []
+
+[dependencies]
+trend = { path = "../.." }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", default-features = false, features = [
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
+] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libvpx-native-sys = { version = "5.0.17", optional = true }
+matroska-demuxer = { version = "0.8.1", optional = true }
+openh264 = { version = "0.9.8", default-features = false, features = ["libloading"], optional = true }

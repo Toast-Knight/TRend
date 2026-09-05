@@ -1,0 +1,31 @@
+# Rust and packaged build output
+/target/
+/builds/
+/Code Refrences/
+/info/
+/PROJECT_OVERVIEW.md
+/GITHUB_PUBLISHING.md
+*.pdb
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
