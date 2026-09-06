@@ -1,0 +1,176 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Validate tag and workspace versions
+        shell: pwsh
+        run: ./scripts/validate-release.ps1
+
+      - name: Validate repository structure
+        shell: pwsh
+        run: ./scripts/validate-repository.ps1 -StaticOnly
+
+      - name: Validate source
+        run: |
+          cargo fmt --all -- --check
+          cargo test --workspace
+          cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Export version
+        id: version
+        shell: pwsh
+        run: '"version=$($env:GITHUB_REF_NAME.Substring(1))" >> $env:GITHUB_OUTPUT'
+
+  windows:
+    name: Package Windows x64
+    needs: validate
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build and validate package
+        run: cmd.exe /d /c scripts\build-windows.bat
+
+      - name: Create archive
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          $name = "trend-$env:VERSION-windows-x86_64"
+          New-Item -ItemType Directory -Path "release/$name" -Force | Out-Null
+          Copy-Item -Path dist/windows/* -Destination "release/$name" -Recurse
+          Compress-Archive -Path "release/$name" -DestinationPath "release/$name.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-package
+          path: release/*.zip
+          if-no-files-found: error
+
+  linux:
+    name: Package Linux x64
+    needs: validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install video build dependencies
+        run: sudo apt-get update && sudo apt-get install --yes pkg-config libvpx-dev
+
+      - name: Build and validate package
+        run: |
+          ./scripts/build-linux.sh
+          pwsh ./scripts/validate-package.ps1 -Platform linux
+
+      - name: Create deterministic archive
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          name="trend-${VERSION}-linux-x86_64"
+          mkdir -p "release/${name}"
+          cp -a dist/linux/. "release/${name}/"
+          tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
+            -czf "release/${name}.tar.gz" -C release "${name}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-package
+          path: release/*.tar.gz
+          if-no-files-found: error
+
+  android:
+    name: Package Android ARM64
+    needs: validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Build Android ARM64
+        env:
+          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
+        run: cargo build --workspace --all-features --release --target aarch64-linux-android
+
+      - name: Build and validate package
+        shell: pwsh
+        run: ./scripts/package-android.ps1
+
+      - name: Create deterministic archive
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          name="trend-${VERSION}-android-aarch64"
+          mkdir -p "release/${name}"
+          cp -a dist/android/aarch64-linux-android/. "release/${name}/"
+          tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
+            -czf "release/${name}.tar.gz" -C release "${name}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-package
+          path: release/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    needs: [validate, windows, linux, android]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Create checksums
+        working-directory: release
+        run: sha256sum trend-* > SHA256SUMS
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" release/*
+          --verify-tag
+          --title "TRend $VERSION"
+          --generate-notes

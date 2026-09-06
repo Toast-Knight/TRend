@@ -2,11 +2,15 @@ use crate::cell::Color;
 use crate::framebuffer::{PixelFormat, PixelFrameView};
 use crate::geometry::RenderGeometry;
 
+/// Pixel resampling strategy used while mapping a source frame to terminal cells.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum SamplingFilter {
+    /// Select the closest source pixel. Fast and sharp for pixel art.
     #[default]
     Nearest,
+    /// Blend the four nearest source pixels for smoother enlargement.
     Bilinear,
+    /// Average the covered source area for higher-quality downscaling.
     Area,
 }
 

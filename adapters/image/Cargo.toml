@@ -12,6 +12,7 @@ webp = ["dep:image-webp"]
 webp-spike = ["webp"]
 
 [dependencies]
+image = { version = "0.25.10", default-features = false, features = ["bmp", "tiff"] }
 image-webp = { version = "0.2.4", optional = true }
 jpeg-decoder = { version = "0.3.2", default-features = false }
 png = { version = "0.18.1", default-features = false }

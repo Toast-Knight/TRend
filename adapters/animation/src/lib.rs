@@ -4,6 +4,7 @@ use core::time::Duration;
 #[cfg(feature = "webp")]
 use std::io::BufReader;
 use std::io::Cursor;
+use std::sync::Arc;
 
 use gif::{ColorOutput, DecodeOptions, DisposalMethod, MemoryLimit, Repeat};
 #[cfg(feature = "webp")]
@@ -11,6 +12,9 @@ use image_webp::{LoopCount, WebPDecoder};
 use trend::{
     AnimationPosition, AnimationTimeline, FrameError, PixelFormat, PixelFrameView, TimelineError,
 };
+
+#[cfg(feature = "webp")]
+type IncrementalWebPDecoder = WebPDecoder<BufReader<Cursor<Arc<[u8]>>>>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DecodeLimits {
@@ -30,7 +34,11 @@ impl Default for DecodeLimits {
             max_height: 16_384,
             max_pixels: 64 * 1024 * 1024,
             max_frames: 1_024,
-            max_decoded_bytes: 256 * 1024 * 1024,
+            max_decoded_bytes: if cfg!(target_os = "android") {
+                96 * 1024 * 1024
+            } else {
+                256 * 1024 * 1024
+            },
             max_decoder_bytes: 16 * 1024 * 1024,
             minimum_frame_duration: Duration::from_millis(10),
         }
@@ -110,6 +118,448 @@ pub struct DecodedAnimation {
     height: u32,
     decoded_bytes: usize,
     timeline: AnimationTimeline,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct FrameMetadata {
+    timestamp: Duration,
+    duration: Duration,
+}
+
+#[derive(Debug)]
+enum PendingDisposal {
+    Keep,
+    Background {
+        left: usize,
+        top: usize,
+        width: usize,
+        height: usize,
+    },
+    Previous(Vec<u8>),
+}
+
+pub struct AnimationDecoder {
+    source: Arc<[u8]>,
+    decoder: gif::Decoder<Cursor<Arc<[u8]>>>,
+    frames: Vec<FrameMetadata>,
+    canvas: Vec<u8>,
+    pending_disposal: PendingDisposal,
+    current_frame: Option<usize>,
+    width: u32,
+    height: u32,
+    canvas_width: usize,
+    decoded_bytes: usize,
+    retained_bytes: usize,
+    timeline: AnimationTimeline,
+    limits: DecodeLimits,
+}
+
+#[cfg(feature = "webp")]
+pub struct WebPAnimationDecoder {
+    decoder: IncrementalWebPDecoder,
+    frames: Vec<FrameMetadata>,
+    pixels: Vec<u8>,
+    current_frame: Option<usize>,
+    width: u32,
+    height: u32,
+    decoded_bytes: usize,
+    retained_bytes: usize,
+    timeline: AnimationTimeline,
+}
+
+#[cfg(feature = "webp")]
+impl WebPAnimationDecoder {
+    pub const fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub const fn height(&self) -> u32 {
+        self.height
+    }
+
+    pub fn frame_count(&self) -> usize {
+        self.frames.len()
+    }
+
+    pub const fn duration(&self) -> Duration {
+        self.timeline.duration()
+    }
+
+    pub const fn decoded_bytes(&self) -> usize {
+        self.decoded_bytes
+    }
+
+    pub const fn retained_bytes(&self) -> usize {
+        self.retained_bytes
+    }
+
+    pub const fn buffered_frames(&self) -> usize {
+        1
+    }
+
+    pub fn position(&self, wall_now: Duration) -> AnimationPosition {
+        self.timeline.position(wall_now)
+    }
+
+    pub fn frame_timestamp(&self, frame_index: usize) -> Result<Duration, DecodeError> {
+        self.frames
+            .get(frame_index)
+            .map(|frame| frame.timestamp)
+            .ok_or(DecodeError::InvalidFrame)
+    }
+
+    pub fn frame_duration(&self, frame_index: usize) -> Result<Duration, DecodeError> {
+        self.frames
+            .get(frame_index)
+            .map(|frame| frame.duration)
+            .ok_or(DecodeError::InvalidFrame)
+    }
+
+    pub fn frame_at(&mut self, frame_index: usize) -> Result<PixelFrameView<'_>, DecodeError> {
+        if frame_index >= self.frames.len() {
+            return Err(DecodeError::InvalidFrame);
+        }
+        if self
+            .current_frame
+            .is_some_and(|current| frame_index < current)
+        {
+            self.decoder.reset_animation();
+            self.current_frame = None;
+        }
+        while self.current_frame != Some(frame_index) {
+            self.decoder.read_frame(&mut self.pixels)?;
+            self.current_frame = Some(self.current_frame.map_or(0, |index| index + 1));
+        }
+        let stride = usize::try_from(self.width)
+            .ok()
+            .and_then(|width| width.checked_mul(4))
+            .ok_or(DecodeError::SizeOverflow)?;
+        Ok(PixelFrameView::new(
+            &self.pixels,
+            self.width,
+            self.height,
+            stride,
+            PixelFormat::Rgba8,
+            self.frames[frame_index].timestamp,
+        )?)
+    }
+}
+
+impl AnimationDecoder {
+    pub const fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub const fn height(&self) -> u32 {
+        self.height
+    }
+
+    pub fn frame_count(&self) -> usize {
+        self.frames.len()
+    }
+
+    pub const fn duration(&self) -> Duration {
+        self.timeline.duration()
+    }
+
+    pub const fn retained_bytes(&self) -> usize {
+        self.retained_bytes
+    }
+
+    pub const fn decoded_bytes(&self) -> usize {
+        self.decoded_bytes
+    }
+
+    pub fn buffered_frames(&self) -> usize {
+        1 + usize::from(matches!(
+            self.pending_disposal,
+            PendingDisposal::Previous(_)
+        ))
+    }
+
+    pub fn position(&self, wall_now: Duration) -> AnimationPosition {
+        self.timeline.position(wall_now)
+    }
+
+    pub fn frame_timestamp(&self, frame_index: usize) -> Result<Duration, DecodeError> {
+        self.frames
+            .get(frame_index)
+            .map(|frame| frame.timestamp)
+            .ok_or(DecodeError::InvalidFrame)
+    }
+
+    pub fn frame_duration(&self, frame_index: usize) -> Result<Duration, DecodeError> {
+        self.frames
+            .get(frame_index)
+            .map(|frame| frame.duration)
+            .ok_or(DecodeError::InvalidFrame)
+    }
+
+    pub fn frame_at(&mut self, frame_index: usize) -> Result<PixelFrameView<'_>, DecodeError> {
+        if frame_index >= self.frames.len() {
+            return Err(DecodeError::InvalidFrame);
+        }
+        if self
+            .current_frame
+            .is_some_and(|current| frame_index < current)
+        {
+            self.reset_decoder()?;
+        }
+        while self.current_frame != Some(frame_index) {
+            self.decode_next()?;
+        }
+        let stride = self
+            .canvas_width
+            .checked_mul(4)
+            .ok_or(DecodeError::SizeOverflow)?;
+        Ok(PixelFrameView::new(
+            &self.canvas,
+            self.width,
+            self.height,
+            stride,
+            PixelFormat::Rgba8,
+            self.frames[frame_index].timestamp,
+        )?)
+    }
+
+    pub fn current_frame(&mut self, wall_now: Duration) -> Result<PixelFrameView<'_>, DecodeError> {
+        self.frame_at(self.position(wall_now).frame_index)
+    }
+
+    fn reset_decoder(&mut self) -> Result<(), DecodeError> {
+        self.decoder = gif_decoder(self.source.clone(), self.limits)?;
+        self.canvas.fill(0);
+        self.pending_disposal = PendingDisposal::Keep;
+        self.current_frame = None;
+        Ok(())
+    }
+
+    fn decode_next(&mut self) -> Result<(), DecodeError> {
+        match core::mem::replace(&mut self.pending_disposal, PendingDisposal::Keep) {
+            PendingDisposal::Keep => {}
+            PendingDisposal::Background {
+                left,
+                top,
+                width,
+                height,
+            } => clear_rect(
+                &mut self.canvas,
+                self.canvas_width,
+                left,
+                top,
+                width,
+                height,
+            ),
+            PendingDisposal::Previous(previous) => self.canvas = previous,
+        }
+
+        let frame = self
+            .decoder
+            .read_next_frame()?
+            .ok_or(DecodeError::InvalidFrame)?;
+        let previous = (frame.dispose == DisposalMethod::Previous).then(|| self.canvas.clone());
+        composite_frame(&mut self.canvas, self.canvas_width, frame)?;
+        self.pending_disposal = match frame.dispose {
+            DisposalMethod::Background => PendingDisposal::Background {
+                left: usize::from(frame.left),
+                top: usize::from(frame.top),
+                width: usize::from(frame.width),
+                height: usize::from(frame.height),
+            },
+            DisposalMethod::Previous => {
+                PendingDisposal::Previous(previous.ok_or(DecodeError::InvalidFrame)?)
+            }
+            DisposalMethod::Any | DisposalMethod::Keep => PendingDisposal::Keep,
+        };
+        self.current_frame = Some(self.current_frame.map_or(0, |index| index + 1));
+        Ok(())
+    }
+}
+
+pub fn decode_gif_streaming(
+    bytes: &[u8],
+    limits: DecodeLimits,
+    wall_now: Duration,
+) -> Result<AnimationDecoder, DecodeError> {
+    let source = Arc::<[u8]>::from(bytes);
+    let mut scanner = gif_decoder(source.clone(), limits)?;
+    let width = u32::from(scanner.width());
+    let height = u32::from(scanner.height());
+    let pixel_count = validate_dimensions(width, height, limits)?;
+    let canvas_len = usize::try_from(pixel_count)
+        .ok()
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or(DecodeError::SizeOverflow)?;
+    let decoded_bytes = canvas_len.checked_mul(3).ok_or(DecodeError::SizeOverflow)?;
+    if decoded_bytes > limits.max_decoded_bytes {
+        return Err(DecodeError::ByteLimit);
+    }
+    let retained_bytes = decoded_bytes
+        .checked_add(source.len())
+        .ok_or(DecodeError::SizeOverflow)?;
+
+    let total_plays = match scanner.repeat() {
+        Repeat::Infinite => None,
+        Repeat::Finite(repetitions) => Some(u64::from(repetitions) + 1),
+    };
+    let mut frames = Vec::new();
+    let mut durations = Vec::new();
+    let mut timestamp = Duration::ZERO;
+    while let Some(frame) = scanner.read_next_frame()? {
+        if frames.len() >= limits.max_frames {
+            return Err(DecodeError::FrameLimit);
+        }
+        let duration =
+            Duration::from_millis(u64::from(frame.delay) * 10).max(limits.minimum_frame_duration);
+        if duration.is_zero() {
+            return Err(DecodeError::Timeline(TimelineError::ZeroDuration));
+        }
+        frames.push(FrameMetadata {
+            timestamp,
+            duration,
+        });
+        durations.push(duration);
+        timestamp = timestamp
+            .checked_add(duration)
+            .ok_or(DecodeError::SizeOverflow)?;
+    }
+    let timeline = AnimationTimeline::new(wall_now, durations, total_plays)?;
+    Ok(AnimationDecoder {
+        source: source.clone(),
+        decoder: gif_decoder(source, limits)?,
+        frames,
+        canvas: vec![0; canvas_len],
+        pending_disposal: PendingDisposal::Keep,
+        current_frame: None,
+        width,
+        height,
+        canvas_width: usize::try_from(width).map_err(|_| DecodeError::SizeOverflow)?,
+        decoded_bytes,
+        retained_bytes,
+        timeline,
+        limits,
+    })
+}
+
+#[cfg(feature = "webp")]
+pub fn decode_webp_streaming(
+    bytes: &[u8],
+    limits: DecodeLimits,
+    wall_now: Duration,
+) -> Result<WebPAnimationDecoder, DecodeError> {
+    if bytes.len() > usize::try_from(limits.max_decoder_bytes).unwrap_or(usize::MAX) {
+        return Err(DecodeError::ByteLimit);
+    }
+    let source = Arc::<[u8]>::from(bytes);
+    let mut decoder = webp_decoder(source.clone(), limits)?;
+    if !decoder.is_animated() {
+        return Err(DecodeError::InvalidFrame);
+    }
+    let (width, height) = decoder.dimensions();
+    let pixel_count = validate_dimensions(width, height, limits)?;
+    let frame_count = usize::try_from(decoder.num_frames()).map_err(|_| DecodeError::FrameLimit)?;
+    if frame_count == 0 || frame_count > limits.max_frames {
+        return Err(DecodeError::FrameLimit);
+    }
+    let canvas_len = usize::try_from(pixel_count)
+        .ok()
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or(DecodeError::SizeOverflow)?;
+    let decoded_bytes = canvas_len.checked_mul(3).ok_or(DecodeError::SizeOverflow)?;
+    if decoded_bytes > limits.max_decoded_bytes {
+        return Err(DecodeError::ByteLimit);
+    }
+
+    let total_plays = match decoder.loop_count() {
+        LoopCount::Forever => None,
+        LoopCount::Times(count) => Some(u64::from(count.get())),
+    };
+    let mut pixels = vec![0; canvas_len];
+    let mut frames = Vec::with_capacity(frame_count);
+    let mut durations = Vec::with_capacity(frame_count);
+    let mut timestamp = Duration::ZERO;
+    for _ in 0..frame_count {
+        let duration = Duration::from_millis(u64::from(decoder.read_frame(&mut pixels)?))
+            .max(limits.minimum_frame_duration);
+        if duration.is_zero() {
+            return Err(DecodeError::Timeline(TimelineError::ZeroDuration));
+        }
+        frames.push(FrameMetadata {
+            timestamp,
+            duration,
+        });
+        durations.push(duration);
+        timestamp = timestamp
+            .checked_add(duration)
+            .ok_or(DecodeError::SizeOverflow)?;
+    }
+    decoder.reset_animation();
+    pixels.fill(0);
+    let timeline = AnimationTimeline::new(wall_now, durations, total_plays)?;
+    let retained_bytes = decoded_bytes
+        .checked_add(source.len())
+        .ok_or(DecodeError::SizeOverflow)?;
+    Ok(WebPAnimationDecoder {
+        decoder,
+        frames,
+        pixels,
+        current_frame: None,
+        width,
+        height,
+        decoded_bytes,
+        retained_bytes,
+        timeline,
+    })
+}
+
+fn gif_decoder(
+    source: Arc<[u8]>,
+    limits: DecodeLimits,
+) -> Result<gif::Decoder<Cursor<Arc<[u8]>>>, DecodeError> {
+    let decoder_limit = NonZeroU64::new(limits.max_decoder_bytes).ok_or(DecodeError::ByteLimit)?;
+    let mut options = DecodeOptions::new();
+    options.set_color_output(ColorOutput::RGBA);
+    options.set_memory_limit(MemoryLimit::Bytes(decoder_limit));
+    options.check_frame_consistency(true);
+    Ok(options.read_info(Cursor::new(source))?)
+}
+
+#[cfg(feature = "webp")]
+fn webp_decoder(
+    source: Arc<[u8]>,
+    limits: DecodeLimits,
+) -> Result<IncrementalWebPDecoder, DecodeError> {
+    let mut decoder = WebPDecoder::new(BufReader::new(Cursor::new(source)))?;
+    decoder.set_memory_limit(usize::try_from(limits.max_decoder_bytes).unwrap_or(usize::MAX));
+    Ok(decoder)
+}
+
+fn validate_dimensions(width: u32, height: u32, limits: DecodeLimits) -> Result<u64, DecodeError> {
+    let pixel_count = u64::from(width) * u64::from(height);
+    if width == 0
+        || height == 0
+        || width > limits.max_width
+        || height > limits.max_height
+        || pixel_count > limits.max_pixels
+    {
+        return Err(DecodeError::DimensionLimit);
+    }
+    Ok(pixel_count)
+}
+
+fn clear_rect(
+    canvas: &mut [u8],
+    canvas_width: usize,
+    left: usize,
+    top: usize,
+    width: usize,
+    height: usize,
+) {
+    for row in 0..height {
+        let start = ((top + row) * canvas_width + left) * 4;
+        let end = start + width * 4;
+        canvas[start..end].fill(0);
+    }
 }
 
 impl DecodedAnimation {
@@ -431,7 +881,7 @@ mod tests {
     fn animated_webp_fixture() -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
-            .join("Test runs Envs/Materials/WebP Spike/WebPAnimatedRejected.webp")
+            .join("tests/fixtures/media/WebP Spike/WebPAnimatedRejected.webp")
     }
 
     fn encode_gif(frames: &[gif::Frame<'_>], repeat: Repeat) -> Vec<u8> {
@@ -539,6 +989,34 @@ mod tests {
             decode_webp(&bytes, byte_limits, Duration::ZERO),
             Err(DecodeError::ByteLimit)
         ));
+    }
+
+    #[cfg(feature = "webp")]
+    #[test]
+    fn streaming_webp_is_bounded_and_supports_rewind() {
+        let bytes = std::fs::read(animated_webp_fixture()).unwrap();
+        let eager = decode_webp(&bytes, DecodeLimits::default(), Duration::ZERO).unwrap();
+        let limits = DecodeLimits {
+            max_decoded_bytes: usize::try_from(eager.width()).unwrap()
+                * usize::try_from(eager.height()).unwrap()
+                * 4
+                * 3,
+            ..DecodeLimits::default()
+        };
+        let mut animation = decode_webp_streaming(&bytes, limits, Duration::ZERO).unwrap();
+
+        assert_eq!(animation.frame_count(), eager.frame_count());
+        assert_eq!(animation.buffered_frames(), 1);
+        assert!(animation.decoded_bytes() <= limits.max_decoded_bytes);
+        let last = animation.frame_count() - 1;
+        assert_eq!(
+            animation.frame_at(last).unwrap().pixels(),
+            eager.frame_at(last).unwrap().pixels()
+        );
+        assert_eq!(
+            animation.frame_at(0).unwrap().pixels(),
+            eager.frame_at(0).unwrap().pixels()
+        );
     }
 
     #[test]
@@ -652,5 +1130,45 @@ mod tests {
             ),
             Err(DecodeError::ByteLimit)
         ));
+    }
+
+    #[test]
+    fn streaming_gif_uses_a_bounded_working_set_and_supports_rewind() {
+        let frames = vec![frame(&[0, 1], 1, DisposalMethod::Keep); 20];
+        let bytes = encode_gif(&frames, Repeat::Infinite);
+        let limits = DecodeLimits {
+            max_decoded_bytes: 24,
+            ..DecodeLimits::default()
+        };
+
+        assert!(matches!(
+            decode_gif(&bytes, limits, Duration::ZERO),
+            Err(DecodeError::ByteLimit)
+        ));
+
+        let mut animation = decode_gif_streaming(&bytes, limits, Duration::ZERO).unwrap();
+        assert_eq!(animation.frame_count(), 20);
+        assert_eq!(animation.decoded_bytes(), 24);
+        assert_eq!(animation.retained_bytes(), bytes.len() + 24);
+        assert_eq!(animation.frame_at(19).unwrap().pixels().len(), 8);
+        assert_eq!(animation.frame_at(0).unwrap().pixels().len(), 8);
+    }
+
+    #[test]
+    fn streaming_gif_preserves_previous_disposal() {
+        let first = frame(&[0, 1], 1, DisposalMethod::Keep);
+        let mut second = frame(&[2, 3], 1, DisposalMethod::Previous);
+        second.transparent = Some(3);
+        let mut third = frame(&[3, 2], 1, DisposalMethod::Keep);
+        third.transparent = Some(3);
+        let bytes = encode_gif(&[first, second, third], Repeat::Finite(0));
+        let mut animation =
+            decode_gif_streaming(&bytes, DecodeLimits::default(), Duration::ZERO).unwrap();
+
+        assert_eq!(
+            animation.frame_at(2).unwrap().pixels(),
+            &[255, 0, 0, 255, 0, 0, 255, 255]
+        );
+        assert!(animation.buffered_frames() <= 2);
     }
 }

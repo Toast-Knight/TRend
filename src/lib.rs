@@ -26,7 +26,7 @@ pub use resize::ResizeCoalescer;
 pub use scale::SamplingFilter;
 pub use terminal::{
     AnsiPresenter, PositionedRenderOutput, PositionedRenderRequest, TerminalCapabilities,
-    TerminalColorMode,
+    TerminalColorMode, TerminalEnvironment,
 };
 pub use timing::{
     AnimationPosition, AnimationTimeline, FrameDecision, PlaybackClock, TimelineError,

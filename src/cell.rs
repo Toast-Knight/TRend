@@ -77,6 +77,11 @@ impl Cell {
     }
 }
 
+/// A reusable rectangular buffer of terminal cells produced by [`crate::Renderer`].
+///
+/// Reuse the same value across frames to retain its allocation. `generation`
+/// is copied from the corresponding [`crate::RenderRequest`] and can be used
+/// by hosts to reject stale asynchronous results.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct CellFrame {
     cells: Vec<Cell>,

@@ -6,13 +6,18 @@ use crate::framebuffer::PixelFrameView;
 use crate::geometry::{FitMode, GeometryError, RenderGeometry, RenderTransform, Viewport};
 use crate::scale::{SamplingFilter, sample_with_alpha_background};
 
+/// Describes the output geometry and identity of one render operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RenderRequest {
+    /// Output dimensions in terminal cells.
     pub viewport: Viewport,
+    /// Source-to-viewport fitting policy.
     pub fit: FitMode,
+    /// Caller-defined identifier copied to the resulting [`CellFrame`].
     pub generation: u64,
 }
 
+/// Optional quality, transform, dithering, and alpha-compositing controls.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct RenderOptions {
     pub sampling: SamplingFilter,
@@ -52,6 +57,11 @@ impl From<GeometryError> for RenderError {
     }
 }
 
+/// Stateless pixel-to-cell renderer.
+///
+/// A renderer can be reused across frames. Render into a reusable [`CellFrame`]
+/// for the simplest allocation-conscious path, or into a caller-owned cell
+/// slice when integrating with another buffer abstraction.
 #[derive(Debug, Default)]
 pub struct Renderer;
 

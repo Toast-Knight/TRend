@@ -3,11 +3,49 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      android:
+        description: Build the optional aarch64 Android library
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
+  android:
+    name: Android ARM64 library
+    if: github.event_name == 'workflow_dispatch' && inputs.android
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Check workspace
+        run: cargo check --workspace --all-features --target aarch64-linux-android
+
+      - name: Build workspace
+        run: |
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang"
+          cargo build --workspace --all-features --release --target aarch64-linux-android
+
+      - name: Build and validate package
+        shell: pwsh
+        run: ./scripts/package-android.ps1
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: trend-aarch64-linux-android
+          path: dist/android/aarch64-linux-android
+          if-no-files-found: error
+
   quality:
     name: Rust quality (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -28,6 +66,10 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install --yes pkg-config libvpx-dev
 
+      - name: Validate repository structure and documentation
+        shell: pwsh
+        run: ./scripts/validate-repository.ps1 -StaticOnly
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
@@ -44,7 +86,7 @@ jobs:
       - name: Test all features on Windows
         if: runner.os == 'Windows'
         # GitHub's Windows image lacks optional Media Foundation VP8/VP9 and
-        # HEVC transforms. Codec-equipped hosts cover these through test_windows.bat.
+        # HEVC transforms. Codec-equipped hosts cover these through scripts/test-windows.bat.
         run: >-
           cargo test --workspace --all-features --
           --skip experimental_webm
@@ -58,5 +100,5 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
         run: >-
           python -m unittest
-          "Test runs Envs/Python TUI/test_trend_tui.py"
-          "Test runs Envs/Python Video Player/test_player.py"
+          "examples/python-tui/test_trend_tui.py"
+          "examples/python-video-player/test_player.py"

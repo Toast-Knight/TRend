@@ -673,7 +673,7 @@ mod tests {
     fn fixture(name: &str) -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
-            .join("Test runs Envs/Materials/WebM Experimental")
+            .join("tests/fixtures/media/WebM Experimental")
             .join(name)
     }
 
@@ -718,7 +718,7 @@ mod tests {
         let error = VideoDecoder::open(
             &Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../..")
-                .join("Test runs Envs/Materials/AVI Experimental/mjpeg-normal.avi"),
+                .join("tests/fixtures/media/AVI Experimental/mjpeg-normal.avi"),
             DecodeLimits::default(),
         )
         .err()
@@ -737,7 +737,7 @@ mod tests {
         let error = VideoDecoder::open(
             &Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../..")
-                .join("Test runs Envs/Materials/MOV Experimental/h264-normal.mov"),
+                .join("tests/fixtures/media/MOV Experimental/h264-normal.mov"),
             DecodeLimits::default(),
         )
         .err()
@@ -754,7 +754,7 @@ mod tests {
     fn mkv_fixture(name: &str) -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
-            .join("Test runs Envs/Materials/MKV Experimental")
+            .join("tests/fixtures/media/MKV Experimental")
             .join(name)
     }
 

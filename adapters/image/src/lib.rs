@@ -4,6 +4,7 @@ use core::time::Duration;
 use std::io::BufReader;
 use std::io::Cursor;
 
+use image::ImageDecoder;
 use trend::{FrameError, PixelFormat, PixelFrameView};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -31,6 +32,7 @@ impl Default for DecodeLimits {
 pub enum DecodeError {
     Png(png::DecodingError),
     Jpeg(jpeg_decoder::Error),
+    Portable(image::ImageError),
     #[cfg(feature = "webp")]
     WebP(image_webp::DecodingError),
     DimensionLimit,
@@ -48,6 +50,7 @@ impl fmt::Display for DecodeError {
         match self {
             Self::Png(error) => write!(formatter, "PNG decode failed: {error}"),
             Self::Jpeg(error) => write!(formatter, "JPEG decode failed: {error}"),
+            Self::Portable(error) => write!(formatter, "image decode failed: {error}"),
             #[cfg(feature = "webp")]
             Self::WebP(error) => write!(formatter, "WebP decode failed: {error}"),
             Self::DimensionLimit => formatter.write_str("image dimensions exceed decode limits"),
@@ -79,6 +82,12 @@ impl From<png::DecodingError> for DecodeError {
 impl From<jpeg_decoder::Error> for DecodeError {
     fn from(value: jpeg_decoder::Error) -> Self {
         Self::Jpeg(value)
+    }
+}
+
+impl From<image::ImageError> for DecodeError {
+    fn from(value: image::ImageError) -> Self {
+        Self::Portable(value)
     }
 }
 
@@ -212,6 +221,18 @@ pub fn decode_jpeg(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, D
     })
 }
 
+pub fn decode_bmp(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, DecodeError> {
+    validate_input_bytes(bytes, limits)?;
+    let decoder = image::codecs::bmp::BmpDecoder::new(Cursor::new(bytes))?;
+    decode_portable(decoder, limits)
+}
+
+pub fn decode_tiff(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, DecodeError> {
+    validate_input_bytes(bytes, limits)?;
+    let decoder = image::codecs::tiff::TiffDecoder::new(Cursor::new(bytes))?;
+    decode_portable(decoder, limits)
+}
+
 #[cfg(feature = "webp")]
 pub fn decode_webp(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, DecodeError> {
     if bytes.len() > limits.max_decoder_bytes {
@@ -263,6 +284,36 @@ fn validate_dimensions(width: u32, height: u32, limits: DecodeLimits) -> Result<
         return Err(DecodeError::DimensionLimit);
     }
     Ok(())
+}
+
+fn validate_input_bytes(bytes: &[u8], limits: DecodeLimits) -> Result<(), DecodeError> {
+    if bytes.len() > limits.max_decoder_bytes {
+        return Err(DecodeError::ByteLimit);
+    }
+    Ok(())
+}
+
+fn decode_portable(
+    decoder: impl ImageDecoder,
+    limits: DecodeLimits,
+) -> Result<DecodedImage, DecodeError> {
+    let (width, height) = decoder.dimensions();
+    validate_dimensions(width, height, limits)?;
+    if decoder.total_bytes() > limits.max_decoded_bytes as u64 {
+        return Err(DecodeError::ByteLimit);
+    }
+    let pixel_count = checked_pixel_count(width, height)?;
+    let rgba_len = checked_rgba_len(pixel_count, limits.max_decoded_bytes)?;
+    let image = image::DynamicImage::from_decoder(decoder)?;
+    let pixels = image.into_rgba8().into_raw();
+    if pixels.len() != rgba_len {
+        return Err(DecodeError::InvalidDecodedLength);
+    }
+    Ok(DecodedImage {
+        pixels,
+        width,
+        height,
+    })
 }
 
 fn checked_pixel_count(width: u32, height: u32) -> Result<usize, DecodeError> {
@@ -360,7 +411,7 @@ mod tests {
     fn webp_fixture(name: &str) -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
-            .join("Test runs Envs/Materials/WebP Spike")
+            .join("tests/fixtures/media/WebP Spike")
             .join(name)
     }
 
@@ -387,6 +438,15 @@ mod tests {
             .encode(pixels, width, height, color_type)
             .unwrap();
         bytes
+    }
+
+    fn encode_portable(format: image::ImageFormat, pixels: &[u8]) -> Vec<u8> {
+        let image = image::RgbaImage::from_raw(2, 1, pixels.to_vec()).unwrap();
+        let mut output = Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(&mut output, format)
+            .unwrap();
+        output.into_inner()
     }
 
     #[cfg(feature = "webp")]
@@ -565,6 +625,66 @@ mod tests {
         assert_eq!(pixel_address, image.pixels().as_ptr());
         assert_eq!((cells.width(), cells.height()), (1, 1));
         assert_ne!(cells.cells()[0].glyph, ' ' as u32);
+    }
+
+    #[test]
+    fn decodes_bmp_and_tiff_to_rgba() {
+        let expected = [255, 0, 0, 255, 0, 0, 255, 128];
+        for (format, decode) in [
+            (
+                image::ImageFormat::Bmp,
+                decode_bmp as fn(&[u8], DecodeLimits) -> Result<DecodedImage, DecodeError>,
+            ),
+            (image::ImageFormat::Tiff, decode_tiff),
+        ] {
+            let bytes = encode_portable(format, &expected);
+            let image = decode(&bytes, DecodeLimits::default()).unwrap();
+            assert_eq!((image.width(), image.height()), (2, 1));
+            assert_eq!(image.pixels(), expected);
+        }
+    }
+
+    #[test]
+    fn bmp_and_tiff_enforce_input_dimension_and_output_limits() {
+        for (format, decode) in [
+            (
+                image::ImageFormat::Bmp,
+                decode_bmp as fn(&[u8], DecodeLimits) -> Result<DecodedImage, DecodeError>,
+            ),
+            (image::ImageFormat::Tiff, decode_tiff),
+        ] {
+            let bytes = encode_portable(format, &[0; 8]);
+            assert!(matches!(
+                decode(
+                    &bytes,
+                    DecodeLimits {
+                        max_decoder_bytes: bytes.len() - 1,
+                        ..DecodeLimits::default()
+                    }
+                ),
+                Err(DecodeError::ByteLimit)
+            ));
+            assert!(matches!(
+                decode(
+                    &bytes,
+                    DecodeLimits {
+                        max_width: 1,
+                        ..DecodeLimits::default()
+                    }
+                ),
+                Err(DecodeError::DimensionLimit)
+            ));
+            assert!(matches!(
+                decode(
+                    &bytes,
+                    DecodeLimits {
+                        max_decoded_bytes: 7,
+                        ..DecodeLimits::default()
+                    }
+                ),
+                Err(DecodeError::ByteLimit)
+            ));
+        }
     }
 
     #[cfg(feature = "webp")]

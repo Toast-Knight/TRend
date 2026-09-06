@@ -18,6 +18,7 @@ use trend_animation::{DecodeLimits as AnimationLimits, DecodedAnimation, decode_
 #[cfg(feature = "webp")]
 use trend_image::{DecodeError as ImageError, decode_webp as decode_static_webp};
 use trend_image::{DecodeLimits as ImageLimits, decode_jpeg, decode_png};
+use trend_media::{MediaLimits, MediaSource};
 use trend_video::{Container, DecodeLimits as VideoLimits, VideoDecoder};
 
 #[cfg(not(windows))]
@@ -248,6 +249,39 @@ enum Key {
     Escape,
 }
 
+const HELP: &str = "TRend Test Viewer
+
+Render images, animations, and video as terminal cells and ANSI output.
+
+Usage:
+    trend-test-viewer <MEDIA>
+    trend-test-viewer --quality <MODE> <MEDIA>
+    trend-test-viewer --compare-all <MEDIA>
+    trend-test-viewer --probe <WIDTH>x<HEIGHT> <ITERATIONS> <MEDIA>
+    trend-test-viewer --supports <FORMAT>
+
+Options:
+    --quality <MODE>     fast | balanced | quality
+    --compare-all        Start paused in comparison mode
+    --probe              Benchmark deterministic rendering without interactive output
+    --supports <FORMAT>  Exit 0 when the compiled viewer supports the extension
+    -h, --help           Show this help
+    -V, --version        Show the package version
+
+Interactive controls:
+    Q or Esc             Exit (Esc applies to video)
+    1 / 2 / 3            Select fast, balanced, or quality rendering
+    M                    Cycle rendering quality
+    C / V / S            Select contain, cover, or stretch fitting
+    Space                Pause or resume animation/video
+    R                    Restart animation/video
+    Left / Right         Seek animation/video
+
+Examples:
+    trend-test-viewer image.png
+    trend-test-viewer --quality quality animation.gif
+    trend-test-viewer --probe 80x24 10 video.mp4";
+
 fn main() {
     if let Err(error) = run() {
         eprintln!("TRend viewer error: {error}");
@@ -259,7 +293,15 @@ fn run() -> Result<(), Box<dyn Error>> {
     let mut arguments = std::env::args_os().skip(1);
     let first = arguments
         .next()
-        .ok_or("usage: trend-test-viewer <media-file> | --supports <extension>")?;
+        .ok_or("missing media path; run trend-test-viewer --help")?;
+    if first == "-h" || first == "--help" {
+        println!("{HELP}");
+        return Ok(());
+    }
+    if first == "-V" || first == "--version" {
+        println!("trend-test-viewer {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
     if first == "--supports" {
         let extension = arguments
             .next()
@@ -369,49 +411,11 @@ fn parse_viewport(value: &str) -> Option<Viewport> {
 }
 
 fn probe_media(path: &Path, viewport: Viewport, iterations: usize) -> Result<(), Box<dyn Error>> {
-    let extension = path
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    match extension.as_str() {
-        "png" => {
-            let bytes = fs::read(path)?;
-            let image = decode_png(&bytes, ImageLimits::default())?;
-            probe_source(path, image.view(Duration::ZERO)?, viewport, iterations)
-        }
-        "jpg" | "jpeg" => {
-            let bytes = fs::read(path)?;
-            let image = decode_jpeg(&bytes, ImageLimits::default())?;
-            probe_source(path, image.view(Duration::ZERO)?, viewport, iterations)
-        }
-        #[cfg(feature = "webp")]
-        "webp" => {
-            let bytes = fs::read(path)?;
-            match decode_static_webp(&bytes, ImageLimits::default()) {
-                Ok(image) => probe_source(path, image.view(Duration::ZERO)?, viewport, iterations),
-                Err(ImageError::UnsupportedAnimation) => {
-                    let animation =
-                        decode_animated_webp(&bytes, AnimationLimits::default(), Duration::ZERO)?;
-                    probe_source(path, animation.frame_at(0)?, viewport, iterations)
-                }
-                Err(error) => Err(error.into()),
-            }
-        }
-        "gif" => {
-            let bytes = fs::read(path)?;
-            let animation = decode_gif(&bytes, AnimationLimits::default(), Duration::ZERO)?;
-            probe_source(path, animation.frame_at(0)?, viewport, iterations)
-        }
-        _ if supports_video_extension(&extension) => {
-            let mut decoder = VideoDecoder::open(path, VideoLimits::default())?;
-            let frame = decoder
-                .frame_for_time(Duration::ZERO)?
-                .ok_or("video did not produce an initial frame")?;
-            probe_source(path, frame.view()?, viewport, iterations)
-        }
-        _ => Err(format!("unsupported media format: .{extension}").into()),
-    }
+    let mut source = MediaSource::open(path, MediaLimits::default())?;
+    let frame = source
+        .representative_frame()?
+        .ok_or("media did not produce a representative frame")?;
+    probe_source(path, frame, viewport, iterations)
 }
 
 fn probe_source(
@@ -904,6 +908,20 @@ fn quality_label(settings: ViewSettings) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn help_documents_every_top_level_mode() {
+        for option in [
+            "--quality",
+            "--compare-all",
+            "--probe",
+            "--supports",
+            "--help",
+            "--version",
+        ] {
+            assert!(HELP.contains(option));
+        }
+    }
 
     #[test]
     fn quality_modes_map_to_expected_renderers() {

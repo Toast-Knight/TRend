@@ -14,9 +14,10 @@ members = [
 	"adapters/image",
 	"adapters/media",
 	"adapters/video",
-	"Test runs Envs/UI",
+	"examples/first-render",
 	"tools/python-tui-bridge",
 	"tools/test-viewer",
+	"tools/ui-lab",
 ]
 default-members = ["."]
 resolver = "3"

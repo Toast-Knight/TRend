@@ -8,20 +8,21 @@ repository = "https://github.com/DigitalDolos/TRend"
 publish = false
 
 [features]
-webp = ["trend-animation/webp", "trend-image/webp"]
+webp = ["trend-animation/webp", "trend-image/webp", "trend-media/webp"]
 webp-spike = ["webp"]
-webm = ["trend-video/webm"]
-linux-webm = ["webm", "trend-video/linux-webm"]
-mkv = ["trend-video/mkv"]
-linux-mkv = ["mkv", "trend-video/linux-mkv"]
-linux-h264 = ["mkv", "trend-video/linux-h264"]
-avi = ["trend-video/avi"]
-mov = ["trend-video/mov"]
+webm = ["trend-video/webm", "trend-media/webm"]
+linux-webm = ["webm", "trend-video/linux-webm", "trend-media/linux-webm"]
+mkv = ["trend-video/mkv", "trend-media/mkv"]
+linux-mkv = ["mkv", "trend-video/linux-mkv", "trend-media/linux-mkv"]
+linux-h264 = ["mkv", "trend-video/linux-h264", "trend-media/linux-h264"]
+avi = ["trend-video/avi", "trend-media/avi"]
+mov = ["trend-video/mov", "trend-media/mov"]
 
 [dependencies]
 trend = { path = "../.." }
 trend-animation = { path = "../../adapters/animation" }
 trend-image = { path = "../../adapters/image" }
+trend-media = { path = "../../adapters/media" }
 trend-video = { path = "../../adapters/video" }
 
 [target.'cfg(not(windows))'.dependencies]

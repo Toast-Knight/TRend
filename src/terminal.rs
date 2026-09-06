@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::io::{IsTerminal, stdin, stdout};
 use std::time::{Duration, Instant};
 
 use crate::cell::{Cell, CellFrame, Color};
@@ -6,6 +7,7 @@ use crate::color::{ansi16_index, ansi256_index};
 use crate::framebuffer::PixelFrameView;
 use crate::renderer::{RenderError, RenderOptions, RenderRequest, Renderer};
 
+/// ANSI color encoding emitted by [`AnsiPresenter`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TerminalColorMode {
     TrueColor,
@@ -18,6 +20,13 @@ pub enum TerminalColorMode {
 pub struct TerminalCapabilities {
     pub color: TerminalColorMode,
     pub unicode: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TerminalEnvironment {
+    pub capabilities: TerminalCapabilities,
+    pub stdin_is_terminal: bool,
+    pub stdout_is_terminal: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -62,6 +71,26 @@ impl TerminalCapabilities {
         };
         Self { color, unicode }
     }
+
+    pub fn detect() -> Self {
+        let term = std::env::var("TERM").ok();
+        let color_term = std::env::var("COLORTERM").ok();
+        Self::from_env_values(
+            term.as_deref(),
+            color_term.as_deref(),
+            std::env::var_os("NO_COLOR").is_some(),
+        )
+    }
+}
+
+impl TerminalEnvironment {
+    pub fn detect() -> Self {
+        Self {
+            capabilities: TerminalCapabilities::detect(),
+            stdin_is_terminal: stdin().is_terminal(),
+            stdout_is_terminal: stdout().is_terminal(),
+        }
+    }
 }
 
 fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
@@ -71,6 +100,11 @@ fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
         .any(|part| part.eq_ignore_ascii_case(needle.as_bytes()))
 }
 
+/// Converts cell frames to ANSI bytes, using incremental updates after the first frame.
+///
+/// Reuse one presenter for a playback surface so unchanged cells can be skipped.
+/// Create a fresh presenter after external terminal output invalidates its
+/// knowledge of the previously presented frame.
 #[derive(Debug)]
 pub struct AnsiPresenter {
     previous: CellFrame,

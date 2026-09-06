@@ -19,16 +19,16 @@ Run from the repository root:
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check
-python -m unittest "Test runs Envs\Python TUI\test_trend_tui.py" "Test runs Envs\Python Video Player\test_player.py"
+python -m unittest "examples\python-tui\test_trend_tui.py" "examples\python-video-player\test_player.py"
 ```
 
-Platform capability suites are available as `test_windows.bat` and
-`test_linux_wsl2.bat`. Changes to rendering, decoding, timing, or the C ABI
+Platform capability suites are available as `scripts/test-windows.bat` and
+`scripts/test-linux-wsl2.bat`. Changes to rendering, decoding, timing, or the C ABI
 should include focused regression coverage.
 
 Keep changes scoped, avoid generated artifacts, and do not add media or copied
 source unless its redistribution terms and provenance are documented. Preserve
-the stable C ABI described in [APIS.md](APIS.md).
+the stable C ABI described in [docs/ffi.md](docs/ffi.md).
 
 ## Pull Requests
 

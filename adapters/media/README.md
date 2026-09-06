@@ -28,8 +28,8 @@ animation, and video adapters. It adds no dependency or media policy to the
 8. Applications retain hover/select meaning, duration, looping choice, layout,
    terminal policy, scheduling, generations, workers, and fullscreen behavior.
 9. Session construction adds no heap allocation beyond existing decoded media.
-   Video remains bounded by `VideoLimits`; GIF retains its explicitly bounded
-   decoded frames; PNG/JPEG retain one RGBA frame.
+   Video remains bounded by `VideoLimits`; GIF and animated WebP use bounded
+   incremental decoders; static images retain one RGBA frame.
 10. Rapid hover changes are application requests. `cancel()` prevents subsequent
     session frames immediately; application generations prevent already-running
     synchronous work from being presented after it becomes stale.
@@ -42,9 +42,11 @@ animation, and video adapters. It adds no dependency or media policy to the
 
 ## API Model
 
-`MediaSource::open()` recognizes PNG, JPEG/JPG, GIF, and MP4. Default-off
-features add static/animated WebP (`webp`), WebM (`webm`/`linux-webm`), and MKV
-(`mkv`/`linux-mkv`/`linux-h264`), plus Windows MJPEG AVI (`avi`) and H.264/HEVC MOV (`mov`).
+`MediaSource::open()` uses bounded magic-byte detection first, followed by an
+optional MIME hint and the file extension. It recognizes PNG, JPEG/JPG, GIF,
+BMP, TIFF, and MP4. Default-off features add static/animated WebP (`webp`),
+WebM (`webm`/`linux-webm`), and MKV (`mkv`/`linux-mkv`/`linux-h264`), plus
+Windows MJPEG AVI (`avi`) and H.264/HEVC MOV (`mov`).
 It exposes common metadata, `representative_frame()`, `frame_at()`,
 bounded-memory counters, and a codec-neutral seek operation.
 
@@ -94,8 +96,9 @@ master clock and pass its current position to `frame_at_media_time()`.
 | --- | --- | --- | --- | --- |
 | PNG | yes | N/A | N/A | Windows x64 |
 | JPEG/JPG | yes | N/A | N/A | Windows x64 |
+| BMP/TIFF | yes | N/A | N/A | Portable Rust path; Android ARM64 device-validated |
 | GIF | yes | yes | yes | Windows x64 |
-| WebP static/animated (`webp`) | yes | yes for animation | yes for animation | Windows x64; portable Rust path |
+| WebP static/animated (`webp`) | yes | yes for animation | yes for animation | Bounded portable Rust path; Android ARM64 device-validated |
 | MP4/H.264 | yes | yes | yes | Windows x64 Media Foundation |
 | WebM VP8/VP9 | yes | yes | yes | Experimental Windows `webm`; Linux `linux-webm` |
 | MKV H.264 | yes | yes | yes | Experimental Windows `mkv`; Linux `linux-h264` |
@@ -105,8 +108,9 @@ master clock and pass its current position to `frame_at_media_time()`.
 
 Linux VP8/VP9 support requires system libvpx; Linux H.264 requires system
 OpenH264. Both paths are validated on x64 WSL2.
-macOS, ARM, ARM64, Termux, and unsupported codec/container combinations retain
-the explicit unsupported-video result.
+Unsupported codec/container combinations retain the explicit unsupported-video
+result. Android ARM64 image and animation paths are device-validated. Android
+video playback is not implemented and recognized containers remain detection-only.
 
 ## Memory and Caching
 
@@ -116,5 +120,8 @@ own media identity and bound that cache according to product needs; this crate
 does not create a global cache or cache rendered ANSI for every viewport.
 
 Preview/full playback retains only the adapter's existing bounded decoded state.
-It never decodes an entire video. GIF's existing adapter intentionally decodes
-all frames within explicit frame, decoder-byte, and decoded-byte limits.
+It never decodes an entire video. Unified GIF playback retains one compositing
+canvas and at most one disposal backup rather than every full decoded frame.
+Unified animated WebP playback also retains one output canvas and resets its
+incremental decoder for backward seeks. Standalone eager APIs remain available
+for compatibility.

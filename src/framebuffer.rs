@@ -35,6 +35,10 @@ impl fmt::Display for FrameError {
 
 impl std::error::Error for FrameError {}
 
+/// A validated, borrowed view of one decoded pixel frame.
+///
+/// Rows may include padding through `stride`; pixels are currently RGBA8 and
+/// remain owned by the caller for the lifetime of this view.
 #[derive(Clone, Copy, Debug)]
 pub struct PixelFrameView<'a> {
     pixels: &'a [u8],

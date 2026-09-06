@@ -1,0 +1,11 @@
+[package]
+name = "trend-first-render"
+version = "0.1.0"
+edition = "2024"
+description = "Minimal PNG-to-ANSI example for TRend"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+trend = { path = "../.." }
+trend-image = { path = "../../adapters/image" }

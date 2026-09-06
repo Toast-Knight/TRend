@@ -1,10 +1,13 @@
 # Rust and packaged build output
 /target/
 /builds/
+/Builds Organized/
+/dist/
 /Code Refrences/
 /info/
 /PROJECT_OVERVIEW.md
 /GITHUB_PUBLISHING.md
+/android-ndk-*/
 *.pdb
 
 # Python caches and local environments

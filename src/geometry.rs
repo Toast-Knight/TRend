@@ -1,9 +1,13 @@
 use core::fmt;
 
+/// Controls how source pixels are mapped into the terminal viewport.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FitMode {
+    /// Preserve aspect ratio and show the entire source, leaving unused cells.
     Contain,
+    /// Preserve aspect ratio and fill the viewport, cropping overflow.
     Cover,
+    /// Fill the viewport without preserving aspect ratio.
     Stretch,
 }
 
@@ -36,6 +40,7 @@ impl Default for RenderTransform {
     }
 }
 
+/// Terminal output dimensions measured in character cells.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Viewport {
     pub width: u16,

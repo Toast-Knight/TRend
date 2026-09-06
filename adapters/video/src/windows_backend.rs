@@ -468,7 +468,7 @@ mod tests {
     fn fixture() -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
-            .join("Test runs Envs/Materials/ColorTest.mp4")
+            .join("tests/fixtures/media/ColorTest.mp4")
     }
 
     #[test]
@@ -501,7 +501,7 @@ mod tests {
     fn webm_fixture(name: &str) -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
-            .join("Test runs Envs/Materials/WebM Experimental")
+            .join("tests/fixtures/media/WebM Experimental")
             .join(name)
     }
 
@@ -509,7 +509,7 @@ mod tests {
     fn mkv_fixture(name: &str) -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
-            .join("Test runs Envs/Materials/MKV Experimental")
+            .join("tests/fixtures/media/MKV Experimental")
             .join(name)
     }
 
@@ -517,7 +517,7 @@ mod tests {
     fn avi_fixture(name: &str) -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
-            .join("Test runs Envs/Materials/AVI Experimental")
+            .join("tests/fixtures/media/AVI Experimental")
             .join(name)
     }
 
@@ -525,7 +525,7 @@ mod tests {
     fn mov_fixture(name: &str) -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
-            .join("Test runs Envs/Materials/MOV Experimental")
+            .join("tests/fixtures/media/MOV Experimental")
             .join(name)
     }
 

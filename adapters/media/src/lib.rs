@@ -1,27 +1,85 @@
 use core::fmt;
 use core::time::Duration;
-use std::fs;
+use std::fs::{self, File};
+use std::io::Read;
 use std::path::Path;
 
 use trend::{FrameError, PixelFrameView, PlaybackClock};
-#[cfg(feature = "webp")]
-use trend_animation::decode_webp as decode_animated_webp;
 use trend_animation::{
-    DecodeError as AnimationError, DecodeLimits as AnimationLimits, DecodedAnimation, decode_gif,
+    AnimationDecoder, DecodeError as AnimationError, DecodeLimits as AnimationLimits,
+    decode_gif_streaming,
 };
+#[cfg(feature = "webp")]
+use trend_animation::{WebPAnimationDecoder, decode_webp_streaming};
 #[cfg(feature = "webp")]
 use trend_image::decode_webp as decode_static_webp;
 use trend_image::{
-    DecodeError as ImageError, DecodeLimits as ImageLimits, DecodedImage, decode_jpeg, decode_png,
+    DecodeError as ImageError, DecodeLimits as ImageLimits, DecodedImage, decode_bmp, decode_jpeg,
+    decode_png, decode_tiff,
 };
 pub use trend_video::SeekAccuracy;
 use trend_video::{Container, DecodeLimits as VideoLimits, VideoDecoder, VideoError};
+
+mod detection;
+
+pub use detection::{DetectionEvidence, MediaCategory, MediaDetection, MediaFormat, detect};
+
+const DETECTION_BYTES: usize = 4 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MediaKind {
     Image,
     Animation,
     Video,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AdapterCapabilities {
+    pub can_detect: bool,
+    pub can_decode: bool,
+    pub can_render: bool,
+    pub can_thumbnail: bool,
+    pub can_animate: bool,
+    pub can_extract_metadata: bool,
+    pub can_stream: bool,
+}
+
+impl AdapterCapabilities {
+    pub fn for_format(format: MediaFormat) -> Self {
+        let decoded = match format {
+            MediaFormat::Png
+            | MediaFormat::Jpeg
+            | MediaFormat::Gif
+            | MediaFormat::Bmp
+            | MediaFormat::Tiff => true,
+            MediaFormat::WebP => cfg!(feature = "webp"),
+            MediaFormat::Mp4 => video_supported(Container::Mp4),
+            MediaFormat::Mkv => video_supported(Container::Mkv),
+            MediaFormat::Avi => video_supported(Container::Avi),
+            MediaFormat::Mov => video_supported(Container::Mov),
+            MediaFormat::WebM => video_supported(Container::WebM),
+            _ => false,
+        };
+        let animation = decoded && matches!(format, MediaFormat::Gif | MediaFormat::WebP);
+        let stream = decoded
+            && matches!(
+                format,
+                MediaFormat::Mp4
+                    | MediaFormat::Mkv
+                    | MediaFormat::Avi
+                    | MediaFormat::Mov
+                    | MediaFormat::WebM
+            );
+        Self {
+            can_detect: format != MediaFormat::Unknown,
+            can_decode: decoded,
+            can_render: decoded,
+            can_thumbnail: decoded,
+            can_animate: animation,
+            can_extract_metadata: decoded,
+            can_stream: stream,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -65,6 +123,7 @@ pub enum MediaError {
     Video(VideoError),
     Frame(FrameError),
     UnsupportedExtension(String),
+    UnsupportedFormat(MediaFormat),
     StaticSource,
     InvalidRange,
 }
@@ -79,6 +138,12 @@ impl fmt::Display for MediaError {
             Self::Frame(error) => error.fmt(formatter),
             Self::UnsupportedExtension(extension) => {
                 write!(formatter, "unsupported media extension: {extension}")
+            }
+            Self::UnsupportedFormat(format) => {
+                write!(
+                    formatter,
+                    "detected media format has no enabled decoder: {format:?}"
+                )
             }
             Self::StaticSource => formatter.write_str("static media has no playback timeline"),
             Self::InvalidRange => {
@@ -122,9 +187,11 @@ impl From<FrameError> for MediaError {
 
 enum DecodedMedia {
     Image(DecodedImage),
-    Animation(DecodedAnimation),
+    StreamingAnimation(Box<AnimationDecoder>),
+    #[cfg(feature = "webp")]
+    StreamingWebP(Box<WebPAnimationDecoder>),
     Video {
-        decoder: VideoDecoder,
+        decoder: Box<VideoDecoder>,
         last_target: Option<Duration>,
     },
 }
@@ -136,43 +203,60 @@ pub struct MediaSource {
 
 impl MediaSource {
     pub fn open(path: &Path, limits: MediaLimits) -> Result<Self, MediaError> {
-        let extension = path
-            .extension()
-            .and_then(|value| value.to_str())
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        match extension.as_str() {
-            "png" => Self::from_image(decode_png(&fs::read(path)?, limits.image)?),
-            "jpg" | "jpeg" => Self::from_image(decode_jpeg(&fs::read(path)?, limits.image)?),
-            "gif" => Self::from_animation(decode_gif(
+        let detection = Self::detect(path, None)?;
+        match detection.format {
+            MediaFormat::Png => Self::from_image(decode_png(&fs::read(path)?, limits.image)?),
+            MediaFormat::Jpeg => Self::from_image(decode_jpeg(&fs::read(path)?, limits.image)?),
+            MediaFormat::Bmp => Self::from_image(decode_bmp(&fs::read(path)?, limits.image)?),
+            MediaFormat::Tiff => Self::from_image(decode_tiff(&fs::read(path)?, limits.image)?),
+            MediaFormat::Gif => Self::from_streaming_animation(decode_gif_streaming(
                 &fs::read(path)?,
                 limits.animation,
                 Duration::ZERO,
             )?),
             #[cfg(feature = "webp")]
-            "webp" => {
+            MediaFormat::WebP => {
                 let bytes = fs::read(path)?;
                 match decode_static_webp(&bytes, limits.image) {
                     Ok(image) => Self::from_image(image),
-                    Err(ImageError::UnsupportedAnimation) => Self::from_animation(
-                        decode_animated_webp(&bytes, limits.animation, Duration::ZERO)?,
+                    Err(ImageError::UnsupportedAnimation) => Self::from_streaming_webp(
+                        decode_webp_streaming(&bytes, limits.animation, Duration::ZERO)?,
                     ),
                     Err(error) => Err(error.into()),
                 }
             }
-            _ => {
-                let Some(container) = Container::from_extension(&extension) else {
-                    return Err(MediaError::UnsupportedExtension(extension));
-                };
+            MediaFormat::Mp4
+            | MediaFormat::Mkv
+            | MediaFormat::Avi
+            | MediaFormat::Mov
+            | MediaFormat::WebM => {
+                let container = container_for_format(detection.format).expect("video format");
                 if !video_container_enabled(container) {
-                    return Err(MediaError::UnsupportedExtension(extension));
+                    return Err(MediaError::UnsupportedFormat(detection.format));
                 }
                 if !VideoDecoder::capabilities().supports_container(container) {
                     return Err(VideoError::UnsupportedContainer { container }.into());
                 }
                 Self::from_video(VideoDecoder::open(path, limits.video)?)
             }
+            _ => Err(MediaError::UnsupportedFormat(detection.format)),
         }
+    }
+
+    pub fn detect(path: &Path, mime: Option<&str>) -> Result<MediaDetection, MediaError> {
+        let mut file = File::open(path)?;
+        let mut bytes = [0_u8; DETECTION_BYTES];
+        let length = file.read(&mut bytes)?;
+        Ok(detect(path, mime, &bytes[..length]))
+    }
+
+    pub fn capabilities(
+        path: &Path,
+        mime: Option<&str>,
+    ) -> Result<AdapterCapabilities, MediaError> {
+        Ok(AdapterCapabilities::for_format(
+            Self::detect(path, mime)?.format,
+        ))
     }
 
     pub const fn info(&self) -> MediaInfo {
@@ -206,7 +290,19 @@ impl MediaSource {
                     duration: None,
                 }))
             }
-            DecodedMedia::Animation(animation) => {
+            DecodedMedia::StreamingAnimation(animation) => {
+                let position = animation.position(media_time);
+                let duration = animation.frame_duration(position.frame_index)?;
+                let view = animation.frame_at(position.frame_index)?;
+                Ok(Some(MediaFrame {
+                    view,
+                    requested_timestamp: media_time,
+                    presentation_timestamp: view.timestamp(),
+                    duration: Some(duration),
+                }))
+            }
+            #[cfg(feature = "webp")]
+            DecodedMedia::StreamingWebP(animation) => {
                 let position = animation.position(media_time);
                 let duration = animation.frame_duration(position.frame_index)?;
                 let view = animation.frame_at(position.frame_index)?;
@@ -257,10 +353,16 @@ impl MediaSource {
             decoder.seek(media_time)?;
             *last_target = Some(media_time);
             first_frame_timestamp = decoder.seek_frame_timestamp();
-        } else if let DecodedMedia::Animation(animation) = &self.media {
+        } else if let DecodedMedia::StreamingAnimation(animation) = &self.media {
             let position = animation.position(media_time);
             first_frame_timestamp = Some(animation.frame_timestamp(position.frame_index)?);
-        } else if matches!(self.media, DecodedMedia::Image(_)) {
+        }
+        #[cfg(feature = "webp")]
+        if let DecodedMedia::StreamingWebP(animation) = &self.media {
+            let position = animation.position(media_time);
+            first_frame_timestamp = Some(animation.frame_timestamp(position.frame_index)?);
+        }
+        if matches!(self.media, DecodedMedia::Image(_)) {
             first_frame_timestamp = Some(Duration::ZERO);
         }
         Ok(SeekResult {
@@ -273,7 +375,9 @@ impl MediaSource {
     pub fn retained_bytes(&self) -> usize {
         match &self.media {
             DecodedMedia::Image(image) => image.pixels().len(),
-            DecodedMedia::Animation(animation) => animation.decoded_bytes(),
+            DecodedMedia::StreamingAnimation(animation) => animation.retained_bytes(),
+            #[cfg(feature = "webp")]
+            DecodedMedia::StreamingWebP(animation) => animation.retained_bytes(),
             DecodedMedia::Video { decoder, .. } => decoder.retained_bytes(),
         }
     }
@@ -281,7 +385,9 @@ impl MediaSource {
     pub fn decoded_frames(&self) -> u64 {
         match &self.media {
             DecodedMedia::Image(_) => 1,
-            DecodedMedia::Animation(animation) => animation.frame_count() as u64,
+            DecodedMedia::StreamingAnimation(animation) => animation.frame_count() as u64,
+            #[cfg(feature = "webp")]
+            DecodedMedia::StreamingWebP(animation) => animation.frame_count() as u64,
             DecodedMedia::Video { decoder, .. } => decoder.decoded_frames(),
         }
     }
@@ -289,21 +395,27 @@ impl MediaSource {
     pub fn dropped_frames(&self) -> u64 {
         match &self.media {
             DecodedMedia::Video { decoder, .. } => decoder.dropped_frames(),
-            DecodedMedia::Image(_) | DecodedMedia::Animation(_) => 0,
+            DecodedMedia::Image(_) | DecodedMedia::StreamingAnimation(_) => 0,
+            #[cfg(feature = "webp")]
+            DecodedMedia::StreamingWebP(_) => 0,
         }
     }
 
     pub fn seek_discarded_frames(&self) -> u64 {
         match &self.media {
             DecodedMedia::Video { decoder, .. } => decoder.seek_discarded_frames(),
-            DecodedMedia::Image(_) | DecodedMedia::Animation(_) => 0,
+            DecodedMedia::Image(_) | DecodedMedia::StreamingAnimation(_) => 0,
+            #[cfg(feature = "webp")]
+            DecodedMedia::StreamingWebP(_) => 0,
         }
     }
 
     pub fn buffered_frames(&self) -> usize {
         match &self.media {
             DecodedMedia::Image(_) => 1,
-            DecodedMedia::Animation(animation) => animation.frame_count(),
+            DecodedMedia::StreamingAnimation(animation) => animation.buffered_frames(),
+            #[cfg(feature = "webp")]
+            DecodedMedia::StreamingWebP(animation) => animation.buffered_frames(),
             DecodedMedia::Video { decoder, .. } => decoder.buffered_frames(),
         }
     }
@@ -324,7 +436,7 @@ impl MediaSource {
         })
     }
 
-    fn from_animation(animation: DecodedAnimation) -> Result<Self, MediaError> {
+    fn from_streaming_animation(animation: AnimationDecoder) -> Result<Self, MediaError> {
         let info = MediaInfo {
             kind: MediaKind::Animation,
             width: animation.width(),
@@ -335,7 +447,24 @@ impl MediaSource {
             seek_accuracy: None,
         };
         Ok(Self {
-            media: DecodedMedia::Animation(animation),
+            media: DecodedMedia::StreamingAnimation(Box::new(animation)),
+            info,
+        })
+    }
+
+    #[cfg(feature = "webp")]
+    fn from_streaming_webp(animation: WebPAnimationDecoder) -> Result<Self, MediaError> {
+        let info = MediaInfo {
+            kind: MediaKind::Animation,
+            width: animation.width(),
+            height: animation.height(),
+            duration: Some(animation.duration()),
+            nominal_frame_rate: None,
+            audio_present: false,
+            seek_accuracy: None,
+        };
+        Ok(Self {
+            media: DecodedMedia::StreamingWebP(Box::new(animation)),
             info,
         })
     }
@@ -352,7 +481,7 @@ impl MediaSource {
         };
         Ok(Self {
             media: DecodedMedia::Video {
-                decoder,
+                decoder: Box::new(decoder),
                 last_target: None,
             },
             info,
@@ -517,16 +646,57 @@ fn video_container_enabled(container: Container) -> bool {
     }
 }
 
+fn container_for_format(format: MediaFormat) -> Option<Container> {
+    match format {
+        MediaFormat::Mp4 => Some(Container::Mp4),
+        MediaFormat::Mkv => Some(Container::Mkv),
+        MediaFormat::Avi => Some(Container::Avi),
+        MediaFormat::Mov => Some(Container::Mov),
+        MediaFormat::WebM => Some(Container::WebM),
+        _ => None,
+    }
+}
+
+fn video_supported(container: Container) -> bool {
+    video_container_enabled(container) && VideoDecoder::capabilities().supports_container(container)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
     use trend::{CellFrame, FitMode, RenderRequest, Renderer, Viewport};
 
     fn fixture(name: &str) -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
-            .join("Test runs Envs/Materials")
+            .join("tests/fixtures/media")
             .join(name)
+    }
+
+    #[test]
+    fn content_signature_overrides_a_wrong_extension_when_opening() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("trend-mislabeled-{suffix}.jpg"));
+        fs::copy(fixture("ColorTest.png"), &path).unwrap();
+
+        let source = MediaSource::open(&path, MediaLimits::default()).unwrap();
+        fs::remove_file(path).unwrap();
+        assert_eq!(source.info().kind, MediaKind::Image);
+        assert_eq!((source.info().width, source.info().height), (258, 200));
+    }
+
+    #[test]
+    fn detection_and_decode_capabilities_are_reported_separately() {
+        let detected = detect(Path::new("picture.svg"), Some("image/svg+xml"), b"<svg/>");
+        let capabilities = AdapterCapabilities::for_format(detected.format);
+        assert!(capabilities.can_detect);
+        assert!(!capabilities.can_decode);
+        assert!(!capabilities.can_render);
+        assert!(!capabilities.can_thumbnail);
     }
 
     #[cfg(feature = "webp")]
@@ -546,6 +716,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(animation.info().kind, MediaKind::Animation);
+        assert_eq!(animation.buffered_frames(), 1);
         let frame = animation
             .frame_at_with_timing(Duration::from_millis(1))
             .unwrap()

@@ -1,12 +1,13 @@
 # Rust Dependency License Inventory
 
-Generated from `cargo metadata --all-features` on 2026-09-04. This inventory
+Generated from `cargo metadata --all-features` on 2026-09-05. This inventory
 covers resolved third-party Rust packages for all workspace features. It is a
 convenience summary; each package's distributed license files are authoritative.
 
 | Package | Version | Declared license |
 | --- | --- | --- |
 | adler2 | 2.0.1 | 0BSD OR MIT OR Apache-2.0 |
+| autocfg | 1.5.1 | Apache-2.0 OR MIT |
 | bitflags | 2.13.1 | MIT OR Apache-2.0 |
 | block-buffer | 0.10.4 | MIT OR Apache-2.0 |
 | bytemuck | 1.25.2 | Zlib OR Apache-2.0 OR MIT |
@@ -24,9 +25,12 @@ convenience summary; each package's distributed license files are authoritative.
 | document-features | 0.2.12 | MIT OR Apache-2.0 |
 | errno | 0.3.14 | MIT OR Apache-2.0 |
 | fdeflate | 0.3.7 | MIT OR Apache-2.0 |
+| fax | 0.2.7 | MIT |
 | flate2 | 1.1.10 | MIT OR Apache-2.0 |
 | generic-array | 0.14.7 | MIT |
 | gif | 0.14.2 | MIT OR Apache-2.0 |
+| half | 2.7.1 | MIT OR Apache-2.0 |
+| image | 0.25.10 | MIT OR Apache-2.0 |
 | image-webp | 0.2.4 | MIT OR Apache-2.0 |
 | jpeg-decoder | 0.3.2 | MIT OR Apache-2.0 |
 | jpeg-encoder | 0.6.1 | (MIT OR Apache-2.0) AND IJG |
@@ -42,6 +46,8 @@ convenience summary; each package's distributed license files are authoritative.
 | miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
 | miniz_oxide | 0.9.1 | MIT OR Zlib OR Apache-2.0 |
 | mio | 1.2.3 | MIT |
+| moxcms | 0.8.1 | BSD-3-Clause OR Apache-2.0 |
+| num-traits | 0.2.19 | MIT OR Apache-2.0 |
 | openh264 | 0.9.8 | BSD-2-Clause |
 | openh264-sys2 | 0.9.8 | BSD-2-Clause |
 | parking_lot | 0.12.5 | MIT OR Apache-2.0 |
@@ -50,6 +56,7 @@ convenience summary; each package's distributed license files are authoritative.
 | pkg-config | 0.3.34 | MIT OR Apache-2.0 |
 | png | 0.18.1 | MIT OR Apache-2.0 |
 | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 |
+| pxfm | 0.1.30 | BSD-3-Clause OR Apache-2.0 |
 | quick-error | 2.0.1 | MIT OR Apache-2.0 |
 | quote | 1.0.47 | MIT OR Apache-2.0 |
 | redox_syscall | 0.5.18 | MIT |
@@ -58,6 +65,11 @@ convenience summary; each package's distributed license files are authoritative.
 | safe_arch | 1.2.0 | Zlib OR Apache-2.0 OR MIT |
 | scopeguard | 1.2.0 | MIT OR Apache-2.0 |
 | semver | 1.0.28 | MIT OR Apache-2.0 |
+| tiff | 0.11.3 | MIT |
+| zerocopy | 0.8.56 | BSD-2-Clause OR Apache-2.0 OR MIT |
+| zerocopy-derive | 0.8.56 | BSD-2-Clause OR Apache-2.0 OR MIT |
+| zune-core | 0.5.3 | MIT OR Apache-2.0 OR Zlib |
+| zune-jpeg | 0.5.15 | MIT OR Apache-2.0 OR Zlib |
 | semver-parser | 0.10.3 | MIT OR Apache-2.0 |
 | sha2 | 0.10.9 | MIT OR Apache-2.0 |
 | signal-hook | 0.3.18 | Apache-2.0 OR MIT |

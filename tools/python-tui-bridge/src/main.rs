@@ -52,6 +52,28 @@ struct FrameMetrics {
     buffered_frames: usize,
 }
 
+const HELP: &str = "TRend Python TUI Bridge
+
+Decode media and return positioned ANSI frames over a line-oriented subprocess protocol.
+
+Usage:
+    trend-python-tui-bridge <MEDIA>
+
+Options:
+    -h, --help       Show this help
+    -V, --version    Show the package version
+
+Protocol commands:
+    META             Read media metadata
+    FRAME ...        Render a representative or timed preview frame
+    FRAME_AT ...     Render at an exact requested media timestamp
+    SEEK ...         Seek the media decoder
+    CLOCK ...        Update the host-driven playback clock
+    RESET            Reset incremental ANSI presenter state
+    QUIT             Exit cleanly
+
+See docs/bridge-protocol.md for field definitions and response framing.";
+
 fn main() {
     if let Err(error) = run() {
         eprintln!("trend Python TUI bridge: {error}");
@@ -60,9 +82,18 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<dyn Error>> {
-    let path = std::env::args_os()
+    let argument = std::env::args_os()
         .nth(1)
-        .ok_or("usage: trend-python-tui-bridge <media-path>")?;
+        .ok_or("missing media path; run trend-python-tui-bridge --help")?;
+    if argument == "-h" || argument == "--help" {
+        println!("{HELP}");
+        return Ok(());
+    }
+    if argument == "-V" || argument == "--version" {
+        println!("trend-python-tui-bridge {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+    let path = argument;
     let source = MediaSource::open(Path::new(&path), MediaLimits::default())?;
     let mut session = PreviewSession::new(source, Duration::ZERO);
     let mut active_range = None;
@@ -511,6 +542,17 @@ fn single_line(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn help_names_the_protocol_and_discovery_options() {
+        for command in [
+            "META", "FRAME", "FRAME_AT", "SEEK", "CLOCK", "RESET", "QUIT",
+        ] {
+            assert!(HELP.contains(command));
+        }
+        assert!(HELP.contains("--help"));
+        assert!(HELP.contains("--version"));
+    }
 
     #[test]
     fn parses_explicit_application_configuration() {

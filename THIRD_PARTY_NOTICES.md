@@ -60,13 +60,25 @@ These packages are not linked into the default `trend` core artifact.
 
 ## trend-image
 
-The optional `trend-image` PNG/JPEG adapter uses the following Rust packages.
-These packages are not linked into the default `trend` core artifact.
+The optional `trend-image` PNG/JPEG/BMP/TIFF adapter uses the following Rust
+packages. These packages are not linked into the default `trend` core artifact.
 
 | Package | Version | Declared license |
 | --- | --- | --- |
 | jpeg-decoder | 0.3.2 | MIT OR Apache-2.0 |
 | jpeg-encoder (development only) | 0.6.1 | (MIT OR Apache-2.0) AND IJG |
+| image | 0.25.10 | MIT OR Apache-2.0 |
+| tiff | 0.11.3 | MIT |
+| fax | 0.2.7 | MIT |
+| moxcms | 0.8.1 | BSD-3-Clause OR Apache-2.0 |
+| pxfm | 0.1.30 | BSD-3-Clause OR Apache-2.0 |
+| half | 2.7.1 | MIT OR Apache-2.0 |
+| zerocopy | 0.8.56 | BSD-2-Clause OR Apache-2.0 OR MIT |
+| zerocopy-derive | 0.8.56 | BSD-2-Clause OR Apache-2.0 OR MIT |
+| zune-core | 0.5.3 | MIT OR Apache-2.0 OR Zlib |
+| zune-jpeg | 0.5.15 | MIT OR Apache-2.0 OR Zlib |
+| num-traits | 0.2.19 | MIT OR Apache-2.0 |
+| autocfg | 1.5.1 | Apache-2.0 OR MIT |
 | png | 0.18.1 | MIT OR Apache-2.0 |
 | bitflags | 2.13.1 | MIT OR Apache-2.0 |
 | crc32fast | 1.5.1 | MIT OR Apache-2.0 |
@@ -93,7 +105,7 @@ explicitly enable either name add these packages:
 | byteorder-lite | 0.1.0 | Unlicense OR MIT |
 | quick-error | 2.0.1 | MIT OR Apache-2.0 |
 
-See [APIS.md](APIS.md) and the adapter READMEs for current experimental-format
+See [docs/api.md](docs/api.md) and the adapter READMEs for current experimental-format
 status and bounds.
 
 ## Linux Terminal Viewer
