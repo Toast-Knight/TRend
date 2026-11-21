@@ -32,3 +32,13 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Local AI maintainer instructions
+/AGENTS.md
+
+# Local-only applications built on the library. The repository is the library itself: the
+# core, the optional crates under adapters/, examples and tools.
+/apps/
+
+# A fixture of unknown provenance: neither committed nor deleted until reviewed.
+/tests/fixtures/media/63173162a98b20f741f434b2ee1b5de4.gif
