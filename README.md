@@ -19,6 +19,8 @@ cargo run --release -p trend-term --example starter
 cargo run --release -p trend-term --example showcase
 ```
 
+![An animated colour pattern filling a terminal while a white square moves around it](docs/images/starter.gif)
+
 [`adapters/term/examples/starter.rs`](adapters/term/examples/starter.rs) is a complete program:
 it opens the terminal, draws an animated picture that follows the window's size, moves a square
 with the arrow keys, and exits cleanly. Its heart is this loop; change the `draw` closure to draw
@@ -74,6 +76,11 @@ GPU read-back), and write `surface.present_bytes()` to the terminal. The surface
 sends only what changed. Start from the `starter` example; [docs/usage.md](docs/usage.md) and
 [docs/readback-recipes.md](docs/readback-recipes.md) go further.
 
+![A turning cube over a checkered floor, with a text panel and a round radar drawn on top](docs/images/hud.gif)
+
+*The `hud_3d` example, using the core alone: a small software renderer draws the cube, a
+translucent radar is blended over it, and the panel is ordinary terminal text in the same cells.*
+
 **Show pictures and video.** Decode with the media crates and render with `Renderer`, which
 fits, scales and letterboxes a frame into cells. The test viewer is a complete example:
 
@@ -81,6 +88,10 @@ fits, scales and letterboxes a frame into cells. The test viewer is a complete e
 cargo run -p trend-first-render -- tests/fixtures/media/ColorTest.png
 cargo run -p trend-test-viewer -- tests/fixtures/media/ColorTest.gif
 ```
+
+![A colour test animation playing in a terminal above a status line](docs/images/viewer.gif)
+
+*The test viewer playing a GIF, letterboxed to fit, with its status line underneath.*
 
 **From C, C++ or Python.** `include/trend.h` is a small C ABI ([docs/ffi.md](docs/ffi.md)). The
 Python examples drive a helper process over pipes ([docs/bridge-protocol.md](docs/bridge-protocol.md)).
@@ -100,6 +111,10 @@ An encoder decides how many pixels each terminal cell shows and which characters
 | `Sextant` | 2 × 3 | Unicode 13 sextants | The most detail; needs a recent font |
 | `Braille` | 2 × 4 | Braille dots | Line art, plots, wireframes |
 | `Density` | 1 × 1 | ` .:-=+*#%@` or shades | ASCII-only and monochrome terminals |
+
+![The same golden ring drawn three times, each sharper than the last](docs/images/encoders.png)
+
+*The same scene in the same 64 × 20 terminal with three encoders.*
 
 ## Requirements
 
