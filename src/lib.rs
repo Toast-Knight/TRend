@@ -6,13 +6,11 @@ pub mod color;
 pub mod compose;
 pub mod dither;
 pub mod encode;
-pub mod experimental;
 #[allow(unsafe_code)]
 pub mod ffi;
 pub mod framebuffer;
 pub mod geometry;
 pub mod pixel_buffer;
-pub mod queue;
 pub mod raster;
 pub mod renderer;
 pub mod resize;
@@ -37,7 +35,6 @@ pub use geometry::{
     RegionError, RenderGeometry, RenderTransform, SubcellGrid, Viewport,
 };
 pub use pixel_buffer::PixelBuffer;
-pub use queue::BoundedQueue;
 pub use raster::{ImageSource, SourceMapping};
 pub use renderer::{RenderError, RenderOptions, RenderRequest, RenderStatus, Renderer};
 pub use resize::ResizeCoalescer;

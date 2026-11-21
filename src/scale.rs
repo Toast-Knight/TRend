@@ -14,6 +14,7 @@ pub enum SamplingFilter {
     Area,
 }
 
+#[cfg(test)]
 pub(crate) fn sample(
     source: &PixelFrameView<'_>,
     geometry: &RenderGeometry,
