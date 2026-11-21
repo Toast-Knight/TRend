@@ -1,10 +1,12 @@
 use core::fmt;
 
-use crate::cell::{Cell, CellFrame, Color};
+use crate::cell::{Cell, CellFrame, CellViewMut, Color};
 use crate::dither::ordered_4x4;
+use crate::encode::{EncodeError, half_block_cell};
 use crate::framebuffer::PixelFrameView;
-use crate::geometry::{FitMode, GeometryError, RenderGeometry, RenderTransform, Viewport};
-use crate::scale::{SamplingFilter, sample_with_alpha_background};
+use crate::geometry::{FitMode, GeometryError, RasterSpec, RegionError, RenderTransform, Viewport};
+use crate::raster::ImageSource;
+use crate::scale::SamplingFilter;
 
 /// Describes the output geometry and identity of one render operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -29,9 +31,14 @@ pub struct RenderOptions {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum RenderError {
     Geometry(GeometryError),
     CellBuffer(&'static str),
+    /// A requested region lies outside the render surface.
+    Region(RegionError),
+    /// An encoder rejected its input.
+    Encode(EncodeError),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -45,6 +52,8 @@ impl fmt::Display for RenderError {
         match self {
             Self::Geometry(error) => error.fmt(formatter),
             Self::CellBuffer(message) => formatter.write_str(message),
+            Self::Region(error) => error.fmt(formatter),
+            Self::Encode(error) => error.fmt(formatter),
         }
     }
 }
@@ -54,6 +63,18 @@ impl std::error::Error for RenderError {}
 impl From<GeometryError> for RenderError {
     fn from(value: GeometryError) -> Self {
         Self::Geometry(value)
+    }
+}
+
+impl From<EncodeError> for RenderError {
+    fn from(value: EncodeError) -> Self {
+        Self::Encode(value)
+    }
+}
+
+impl From<RegionError> for RenderError {
+    fn from(value: RegionError) -> Self {
+        Self::Region(value)
     }
 }
 
@@ -127,13 +148,15 @@ impl Renderer {
     where
         F: FnMut() -> bool,
     {
-        let geometry = RenderGeometry::calculate_transformed(
-            source.width(),
-            source.height(),
-            request.viewport,
-            request.fit,
-            options.transform,
-        )?;
+        // The same stages as ImageSource -> ordered dither -> HalfBlock, streamed
+        // one cell row at a time so no pixel buffer is allocated.
+        let image = ImageSource::new(source)
+            .with_fit(request.fit)
+            .with_sampling(options.sampling)
+            .with_transform(options.transform)
+            .with_alpha_background(options.alpha_background);
+        let spec = RasterSpec::half_block(request.viewport)?;
+        let geometry = image.geometry(&spec)?;
         let required = usize::from(request.viewport.width)
             .checked_mul(usize::from(request.viewport.height))
             .ok_or(RenderError::CellBuffer(
@@ -146,68 +169,33 @@ impl Renderer {
             return Ok(RenderStatus::Cancelled);
         }
         output[..required].fill(Cell::default());
+        let mut cells = CellViewMut::from_slice(
+            &mut output[..required],
+            request.viewport.width,
+            request.viewport.height,
+        )
+        .expect("output length was checked");
 
+        let pixel = |x: u32, y: u32| {
+            let color = image.color_at(&geometry, x, y)?;
+            Some(if options.dither_strength == 0 {
+                color
+            } else {
+                ordered_4x4(color, x, y, options.dither_strength)
+            })
+        };
         for cell_y in 0..request.viewport.height {
             if should_cancel() {
                 return Ok(RenderStatus::Cancelled);
             }
-            for cell_x in 0..request.viewport.width {
-                let upper = processed_sample(
-                    &source,
-                    &geometry,
-                    u32::from(cell_x),
-                    u32::from(cell_y) * 2,
-                    options,
-                );
-                let lower = processed_sample(
-                    &source,
-                    &geometry,
-                    u32::from(cell_x),
-                    u32::from(cell_y) * 2 + 1,
-                    options,
-                );
-                let cell = match (upper, lower) {
-                    (Some(foreground), Some(background)) => {
-                        Cell::half_block(foreground, background)
-                    }
-                    (Some(foreground), None) => Cell::upper_half(foreground),
-                    (None, Some(foreground)) => Cell::lower_half(foreground),
-                    (None, None) => Cell::default(),
-                };
-                let index =
-                    usize::from(cell_y) * usize::from(request.viewport.width) + usize::from(cell_x);
-                output[index] = cell;
+            let y = u32::from(cell_y) * 2;
+            for (cell_x, cell) in cells.row_mut(cell_y).iter_mut().enumerate() {
+                let x = cell_x as u32;
+                *cell = half_block_cell(pixel(x, y), pixel(x, y + 1));
             }
         }
 
         Ok(RenderStatus::Complete)
-    }
-}
-
-fn processed_sample(
-    source: &PixelFrameView<'_>,
-    geometry: &RenderGeometry,
-    viewport_x: u32,
-    viewport_y: u32,
-    options: RenderOptions,
-) -> Option<Color> {
-    let color = sample_with_alpha_background(
-        source,
-        geometry,
-        viewport_x,
-        viewport_y,
-        options.sampling,
-        options.alpha_background,
-    )?;
-    if options.dither_strength == 0 {
-        Some(color)
-    } else {
-        Some(ordered_4x4(
-            color,
-            viewport_x,
-            viewport_y,
-            options.dither_strength,
-        ))
     }
 }
 

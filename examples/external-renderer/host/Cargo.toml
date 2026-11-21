@@ -1,0 +1,11 @@
+[package]
+name = "trend-external-renderer"
+version = "0.1.0"
+edition = "2024"
+description = "End-to-end example: an external renderer's framebuffer, borrowed by TRend, shown in a terminal"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+tiny-raster = { path = "../renderer" }
+trend = { path = "../../.." }

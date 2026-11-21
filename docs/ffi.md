@@ -24,3 +24,12 @@ dithering, alignment, zoom, and pan fields. A zoom of zero is invalid.
 Windows packages place the DLL in `bin/`, the MSVC import library in `lib/`, and
 the header in `include/`. Keep the DLL beside the consuming executable or on
 `PATH`. Rust callers should use the safe native API instead of the C boundary.
+
+`scripts/c-consumer-smoke.sh` compiles and runs a strict C11 consumer of the
+header (`tests/c/consumer_smoke.c`) that checks the struct layout at compile
+time and every export at run time.
+
+These four functions wrap the legacy half-block renderer. A C surface for
+`Surface`, the other encoders, borrowed layouts, regions, overlays, and
+presentation is designed in [ffi-v2-design.md](ffi-v2-design.md) and not yet
+implemented; this ABI stays as it is.

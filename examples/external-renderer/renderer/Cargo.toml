@@ -1,0 +1,9 @@
+[package]
+name = "tiny-raster"
+version = "0.1.0"
+edition = "2024"
+description = "A small software 3D rasterizer standing in for any external renderer. It knows nothing about TRend."
+license = "Apache-2.0"
+publish = false
+
+[dependencies]

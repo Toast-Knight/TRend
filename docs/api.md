@@ -18,9 +18,9 @@ terminal cells or ANSI bytes.
 ## Core Rust API
 
 The crate root re-exports the main types. Lower-level helpers remain available
-through the public `cache`, `cell`, `color`, `dither`, `experimental`, `ffi`,
-`framebuffer`, `geometry`, `queue`, `renderer`, `resize`, `scale`, `terminal`,
-and `timing` modules.
+through the public `cache`, `cell`, `color`, `dither`, `encode`, `experimental`,
+`ffi`, `framebuffer`, `geometry`, `pixel_buffer`, `queue`, `raster`, `renderer`,
+`resize`, `scale`, `terminal`, and `timing` modules.
 
 ### Input and Cells
 
@@ -59,11 +59,17 @@ and `timing` modules.
   caller-owned `&mut [Cell]`.
 - `Renderer::render_to_slice_cancellable` checks a callback between rows and
   returns `RenderStatus::{Complete, Cancelled}`.
-- `RenderError` wraps geometry and output-buffer failures.
+- `RenderError` wraps geometry, output-buffer, and region (`Region`) failures.
 
 The production renderer uses Unicode half blocks, giving two vertical pixel
 samples per terminal cell. Fully transparent samples use terminal-default
 color; `alpha_background` can matte RGBA input against a chosen color.
+
+`Renderer` is a compatibility facade over the staged pipeline: it uses the
+same geometry (`calculate_for_spec`), sampling (`ImageSource`), dither, and
+half-block cell rule as `ImageSource` + `HalfBlock`, streamed one cell row at a
+time so it never allocates a pixel buffer. Its output, allocation behavior,
+and cancellation points are unchanged.
 
 ### ANSI Presentation
 
@@ -80,6 +86,56 @@ color; `alpha_background` can matte RGBA input against a chosen color.
 - `AnsiPresenter::render_at` combines rendering and positioned presentation.
   `PositionedRenderOutput` returns ANSI bytes plus separate render and ANSI
   generation durations.
+- In `Monochrome` mode, cells with a foreground or background color are shaded
+  by brightness as before. Cells with no color at all (such as `Density`
+  output) are written with their own glyph; previously they always rendered
+  blank.
+- Once its buffers have grown to a frame's size, presenting further frames of
+  that size allocates nothing.
+- **Output options (M4, opt-in).** `AnsiPresenter::with_options(capabilities,
+  OutputOptions)`, `set_options`, and `options` choose per presenter:
+  - `synchronized_updates`: wraps each non-empty frame in DEC mode 2026
+    (`CSI ? 2026 h` … `CSI ? 2026 l`) so supporting terminals show it at once;
+    others ignore it. An unchanged frame still writes nothing.
+  - `combined_colors`: one SGR sequence when a cell changes both colors
+    (`CSI 38;2;r;g;b;48;2;r;g;b m`).
+  - `compact_indexed_colors` (M5): in 256- and 16-color modes, skip color
+    sequences that select the palette entry the terminal already has. The
+    screen is identical. In M6 measurements it writes 2.1–5.4× fewer bytes
+    in 256 colors and 1.7–3.4× fewer in 16, and presents 9–57% and 3–15%
+    faster respectively (see [benchmarks.md](benchmarks.md)).
+
+  `OutputOptions::default()` reproduces the original bytes exactly; the golden
+  ANSI tests pin it.
+
+  **Decision (M6): `compact_indexed_colors` stays opt-in for now and is
+  planned to become the default at the next output-compatibility boundary**
+  (the next minor version before 1.0, or 1.0 itself). The evidence supports
+  it — same screen, fewer bytes, less CPU, no allocation — but turning it on
+  changes the bytes of every 256- and 16-color stream, which the default is
+  documented to preserve. The switch will be a one-line change to
+  `OutputOptions::default()` plus re-recorded 256/16-color ANSI goldens; the
+  screen-model tests already prove the screens are identical. Truecolor
+  output is unaffected either way. Hosts that want it today set it
+  explicitly. `combined_colors` (about 5–8% fewer bytes) and
+  `synchronized_updates` are candidates for the same boundary.
+- `AnsiPresenter::last_stats()` returns `PresentStats { bytes, cells, runs,
+  color_sequences, attribute_sequences }` for the most recent presentation,
+  and `capabilities()` reports the presenter's capabilities.
+- **Attributes (M5).** `Cell::attributes` bits `Cell::BOLD`, `DIM`, `ITALIC`,
+  `UNDERLINE`, `BLINK`, `REVERSE`, and `STRIKETHROUGH` are written as SGR
+  attributes. Only changes are emitted, and positioned output resets them.
+  Encoders always produce 0, so image output is byte-identical. Before M5
+  the byte was ignored.
+- `AnsiPresenter::present_view_at(view, row, column)` presents any `CellView`
+  (such as a sub-view) like `present_at`.
+- `AnsiPresenter::present_region_at(frame, region, row, column)` diffs and
+  writes only `region` of a frame shown at an origin, keeping the presenter's
+  knowledge of every other cell, so parts of a frame can be presented at
+  different rates. It returns `RegionError` for an empty or out-of-bounds
+  region.
+- `AnsiPresenter::invalidate()` forgets what the terminal shows, so the next
+  presentation redraws every cell (after other output overwrote the area).
 
 ### Timing, Queues, Cache, and Resize
 
@@ -102,6 +158,315 @@ media position, compare actual presentation timestamps, and use
 `FrameDecision` to wait, present, or drop. Audio decoding and output remain
 external; synchronization metadata and presentation timing remain part of
 TRend.
+
+### Pixel Buffers and Cell Encoders (Preview)
+
+These additive APIs split rendering into stages so any application that can
+produce pixels can use TRend as its terminal output. They coexist with
+`Renderer`, which is unchanged. See
+[phase-0-plan.md](phase-0-plan.md) for the design and migration plan.
+
+```text
+app renderer or ImageSource -> PixelBuffer -> CellEncoder -> CellFrame/CellViewMut -> AnsiPresenter
+```
+
+- `PixelBuffer` is an owned, tightly packed, straight-alpha RGBA8 framebuffer:
+  `new`, `resize` (clears to transparent and reuses capacity), `width`,
+  `height`, `pixels`, `pixels_mut`, and `view`, which lends a
+  `PixelFrameView`. Alpha 0 means no content.
+- `SubcellGrid` is the number of pixels an encoder resolves per cell
+  (`HALF_BLOCK` is 1x2, `QUADRANT` is 2x2, `SEXTANT` is 2x3, `BRAILLE` is
+  2x4). `CellAspect` is the physical
+  width:height of a terminal cell, supplied by the host (default 1:2).
+- `RasterSpec::new(viewport, grid, cell_aspect)` gives the pixel `width`,
+  `height`, and physical `pixel_aspect` a source must render for a viewport.
+  Native renderers draw at that size and use `pixel_aspect` in their
+  projection.
+- `RenderGeometry::calculate_for_spec` is the fit/zoom/pan calculation for any
+  spec. `calculate_transformed` delegates to it with a half-block spec.
+- `ImageSource` resamples an existing `PixelFrameView` (decoded image, video
+  frame, or application framebuffer with any stride) into a `PixelBuffer` for
+  a spec, with `with_fit`, `with_sampling`, `with_transform`, and
+  `with_alpha_background`. `render_region(spec, x, y, target)` renders the
+  rectangle of the spec's surface at `(x, y)` with `target`'s size into any
+  `PixelViewMut`: a region of a larger buffer or one row band at a time
+  (check for cancellation between bands, or give bands to host threads).
+  Every region is identical to the same pixels of `render_into`.
+- `dither::ordered_4x4_in_place` applies the ordered dither to a `PixelBuffer`.
+  `dither::ordered_4x4_region(&mut view, origin_x, origin_y, strength)`
+  dithers a region or row band using its position in the full surface, so
+  banded or regional rendering matches whole-surface dithering with no seams.
+- `CellEncoder` has `grid()`, `encode(PixelFrameView, CellViewMut)`, and a
+  provided `requirements()`. Encoders choose glyphs and colors only;
+  `AnsiPresenter` still owns color depth, placement, and escape codes.
+  `EncodeError::SizeMismatch` reports pixels that do not match
+  `cells x grid`.
+- `EncoderRequirements { glyphs, colors }` describes what an encoder's output
+  needs: `GlyphRepertoire::{Ascii, BlockElements, Sextants, Braille}` and
+  `ColorUse::{None, Foreground, ForegroundAndBackground}`.
+  `supported_by(TerminalCapabilities)` tells a host whether a terminal shows
+  that output faithfully. Choosing an encoder remains host policy.
+- `HalfBlock` reproduces the existing renderer's cells exactly. `Quadrant`
+  uses U+2596-U+259F quadrant glyphs with two colors per cell; since M5 it
+  computes the same cells about 3-4x faster.
+- `Sextant` (M5) uses the Unicode 13 sextant mosaics (U+1FB00-U+1FB3B, plus
+  `▌`, `▐`, `█`) for 2x3 pixels per cell with two colors: 1.5x Quadrant's
+  vertical detail. Most current terminals draw sextants natively; older
+  fonts may not, which `TerminalCapabilities` can't detect, so offer it as a
+  host option.
+- `Braille` (M5) uses Braille patterns (U+2800-U+28FF) for 2x4 pixels per
+  cell: dots in the foreground color over the background. The smaller part
+  of each cell's two-color split becomes the dots. Its dots cover little of
+  the cell, so it suits line art, plots, and wireframes more than
+  photographs.
+- `Sextant` and `Braille` share a two-color fitter that orders a cell's
+  pixels along the axis between two far-apart colors and picks the best
+  split. Its total error is within 0.03% of trying every split. `Quadrant`
+  keeps its exhaustive search, which is now just as fast, so its output
+  stays identical.
+- `Density` is one pixel per cell, drawn as a character whose ink density
+  follows brightness. `DensityRamp::{Ascii, Shades}` selects ` .:-=+*#%@` or
+  ` ░▒▓█`, and `colored` optionally keeps the pixel's color as the
+  foreground. `Density::ASCII` (no color) works faithfully on every terminal,
+  including monochrome. It assumes light glyphs on a dark background.
+- `CellFrame::view` and `view_mut` lend `CellView` (`width`, `height`, `row`,
+  `sub`) and `CellViewMut` (`width`, `height`, `row_mut`, `as_view`, `sub`,
+  `fill`, `into_row_bands`). `CellViewMut::from_slice(cells, width, height)` wraps
+  caller-owned cells, such as `render_to_slice` output or C ABI buffers.
+
+#### Borrowed frames and layouts
+
+- `PixelLayout::new(width, height, format, alpha)` describes a borrowed frame:
+  `PixelFormat::{Rgba8, Bgra8}`, `with_stride` for padded rows, and
+  `with_row_order(RowOrder::{TopDown, BottomUp})`. Alpha has no default:
+  - `AlphaMode::Straight`: channels independent of alpha; alpha 0 is no content.
+  - `AlphaMode::Premultiplied`: channels are divided by alpha when read;
+    channels above alpha clamp to alpha; alpha 0 reads as transparent.
+  - `AlphaMode::Ignore`: the fourth byte is padding (BGRX/RGBX); every pixel
+    is opaque.
+- `PixelFrameView::from_layout(bytes, layout)` validates and borrows any
+  layout; `new` remains the top-down straight-alpha constructor and
+  `with_timestamp` attaches a media timestamp. `rgba(x, y)` reads any layout
+  as straight, top-down RGBA; `row(y)` returns a logical row's raw bytes;
+  `layout`, `row_order`, and `alpha_mode` describe the view.
+- Encoders and `ImageSource` read every layout through the same rules, so a
+  BGRA, bottom-up, premultiplied, or padded frame gives the same cells as the
+  equivalent straight RGBA image.
+- **Exact-size frames are zero-copy:** when `RasterSpec::matches(&frame)` is
+  true, pass the borrowed frame straight to `CellEncoder::encode`. Nothing is
+  copied or allocated. Otherwise resample it with `ImageSource`.
+- Since M6, encoders and `blend_over` read borrowed rows through a decoder
+  specialized for the frame's layout, chosen once per frame. A BGRA,
+  bottom-up, premultiplied, padded frame costs 3–5% more to encode with the
+  block encoders than TRend's own straight RGBA buffer. A sub-view
+  (`PixelFrameView::sub`) of a larger framebuffer is read in place the same
+  way. [readback-recipes.md](readback-recipes.md) maps common framebuffers
+  (GPU readbacks, GDI, X11, Cairo, Skia, Qt, SDL, FFmpeg, CEF) to layouts,
+  and `examples/external-renderer` shows the whole path.
+
+#### Sub-views, regions, and row bands
+
+- `PixelRect` and `CellRect` are distinct rectangle types with `intersection`.
+  `RegionError::{Empty, OutOfBounds}` reports invalid regions.
+- `PixelFrameView::sub(rect)` borrows a region of any layout.
+  `PixelViewMut` is a writable, strided, straight top-down RGBA surface from
+  `PixelBuffer::view_mut` or `PixelViewMut::new(bytes, width, height, stride)`,
+  with `row_mut`, `as_view`, `sub`, `reborrow`, and `into_row_bands`.
+  `CellViewMut::reborrow` likewise lets a view be passed by value (for example
+  to `encode` or `render_region`) and used again.
+- `RasterSpec::pixel_rect(cells)` maps a cell region to the pixels that encode
+  it; `RasterSpec::covering_cells(pixels)` maps a damaged pixel rectangle
+  outward to whole cells.
+- Several encoders can write different regions of one `CellFrame`, presented
+  by one `AnsiPresenter`. Row bands (`into_row_bands`) split work for
+  sequential cancellation checks or host threads; TRend starts no threads.
+
+```rust
+// A wgpu/D3D12-style readback: BGRA, 256-byte rows, premultiplied.
+let layout = PixelLayout::new(width, height, PixelFormat::Bgra8, AlphaMode::Premultiplied)
+    .with_stride(padded_bytes_per_row);
+let frame = PixelFrameView::from_layout(&mapped, layout)?;
+if spec.matches(&frame) {
+    encoder.encode(frame, cells.view_mut())?;
+}
+
+// Re-encode only what changed.
+let dirty = spec.covering_cells(damage)?;
+encoder.encode(frame.sub(spec.pixel_rect(dirty)?)?, cells.view_mut().sub(dirty)?)?;
+```
+
+`PixelFormat`, `AlphaMode`, `PixelLayout`, and the core error enums
+(`FrameError`, `GeometryError`, `RenderError`, `EncodeError`, `RegionError`)
+are `#[non_exhaustive]`, so later milestones can extend them without breaking
+callers. M4 added `RenderError::Encode(EncodeError)`.
+
+```rust
+let spec = RasterSpec::new(viewport, Quadrant.grid(), CellAspect::default())?;
+ImageSource::new(frame_view)
+    .with_sampling(SamplingFilter::Area)
+    .render_into(&spec, &mut pixels)?;
+cells.resize(viewport.width, viewport.height)?;
+Quadrant.encode(pixels.view(), cells.view_mut())?;
+stdout.write_all(presenter.present(&cells))?;
+```
+
+`examples/procedural_source.rs` shows native and scaled application
+rendering (`--encoder half|quadrant|density`), built on `Surface` since M4. `examples/render_benchmark.rs`
+times the legacy renderer against the pipeline, and
+`examples/workload_benchmark.rs` times realistic workloads stage by stage (see
+[benchmarks.md](benchmarks.md)).
+
+### Surface and input mapping (M4)
+
+`Surface<E: CellEncoder>` owns one render target: the encoder, the
+`RasterSpec`, a `PixelBuffer`, a `CellFrame`, and an `AnsiPresenter`, and keeps
+them consistent. It is a convenience layer only: it holds no scene, never
+composites, reads no input, starts no threads except in the opt-in
+`*_parallel` methods, and writes only to the writer it's given. It produces exactly the cells and bytes of the equivalent manual
+steps (tested).
+
+```rust
+let mut surface = Surface::new(HalfBlock, viewport, capabilities)?;
+surface.set_output_options(OutputOptions::new().with_synchronized_updates(true));
+
+// Native rendering: draw into the pixel buffer, then every cell is encoded.
+surface.draw(|pixels, spec| app.render(pixels, spec))?;
+surface.present(&mut stdout)?;
+
+// An exact-size readback, in any layout, encoded in place.
+surface.encode_from(readback_view)?;
+
+// An image or video frame, fitted and resampled.
+surface.encode_image(&ImageSource::new(frame).with_sampling(SamplingFilter::Area))?;
+
+// Damage: re-encode and present only the cells covering changed pixels.
+if let Some(cells) = surface.encode_region(damage)? {
+    surface.present_region(cells, &mut stdout)?;
+}
+```
+
+- Setup: `new(encoder, viewport, capabilities)`, `resize`, `set_encoder`,
+  `set_cell_aspect`, `set_capabilities`, `set_output_options`, and
+  `set_origin(row, column)` (1-based). Changing size, origin, or capabilities
+  makes the next presentation redraw every cell.
+- Accessors: `encoder`, `spec`, `viewport`, `cell_aspect`, `capabilities`,
+  `output_options`, `origin`, `pixels`, `pixels_mut`, `cells`, `cells_mut`
+  (for overlays; the next encode overwrites the cells it covers),
+  `source_mapping`, and `last_stats`.
+- Encoding:
+  - `draw(|pixels, spec| …)` returns the closure's value. The buffer keeps its
+    contents between frames.
+  - `encode` and `encode_region(damage)` re-encode after `pixels_mut` edits.
+    `encode_region` clips the damage and returns the covering `CellRect`.
+  - `encode_from(frame)` accepts only frames of the spec's exact size and
+    reads them in place. Any other size is `EncodeError::SizeMismatch`.
+  - `encode_from_region(frame, damage)` (M5) re-encodes only the cells
+    covering a dirty rectangle of such a frame, again in place.
+  - `encode_image(&source)` and `encode_image_region(&source, damage)` fit
+    and resample.
+  - `encode_image_parallel(&source, threads)` and
+    `encode_from_parallel(frame, threads)` (after M6) do the same as
+    `encode_image` and `encode_from`, split into bands of cell rows on up to
+    `threads` scoped threads. The cells, pixels, and mapping are identical
+    (`tests/parallel.rs`). They need `E: Sync` (use
+    `Box<dyn CellEncoder + Sync>` for run-time choice). Unlike the rest of
+    `Surface` they allocate per call (thread stacks), which costs tens of
+    microseconds; use them for large terminals, where a frame costs
+    milliseconds. `threads <= 1` is the single-threaded method.
+
+  Exact-size and fitted input are separate calls on purpose: when pixels
+  aren't square (for example `Density`), a frame that happens to have the
+  spec's size would otherwise be stretched instead of fitted.
+- Presenting: `present(&mut writer)` and `present_region(cells, &mut writer)`
+  return `io::Result<PresentStats>`. `present_bytes` and
+  `present_region_bytes` return the bytes instead, and `invalidate` forces a
+  full redraw. Output is positioned at the origin and restores default
+  attributes, so the surface can share the screen with host text. It never
+  clears anything outside its own cells.
+- A warmed-up surface allocates nothing: drawing, every single-threaded
+  encode path, and whole or regional presentation with any options.
+- `Surface<Box<dyn CellEncoder>>` lets a host choose the encoder at run time,
+  for example from `CellEncoder::requirements`. `CellEncoder` is implemented
+  for `&T` and `Box<T>`.
+
+Mapping between terminal cells, surface pixels, and source pixels:
+
+- `RasterSpec::cell_at(x, y)` gives the cell `(column, row)` showing a pixel.
+  `RasterSpec::cell_pixels(column, row)` gives the pixels a cell encodes.
+- `Surface::cell_at_terminal(row, column)` maps a 1-based terminal position,
+  as mouse reports give it, to a surface cell.
+- `ImageSource::mapping(&spec)` returns a `SourceMapping`:
+  - `to_source(x, y)` is the source pixel a surface pixel shows (the Nearest
+    sample), or `None` in letterboxing.
+  - `cell_to_source(column, row)` maps a cell through its center pixel.
+  - `content()` is the surface rectangle the image covers.
+  - `source_damage(rect)` gives the surface pixels a change to `rect` of the
+    source can affect. It is conservative for every filter, fit, and
+    transform, and is tested against full re-renders on 240,000 random
+    geometries.
+
+```rust
+// Mouse click at a terminal position -> pixel of the video frame.
+let pixel = surface
+    .cell_at_terminal(mouse_row, mouse_column)
+    .and_then(|(column, row)| surface.source_mapping()?.cell_to_source(column, row));
+
+// Dirty rectangle reported by a decoder or browser -> cells to update.
+if let Some(damage) = source.mapping(surface.spec())?.source_damage(dirty) {
+    if let Some(cells) = surface.encode_image_region(&source, damage)? {
+        surface.present_region(cells, &mut stdout)?;
+    }
+}
+```
+
+Terminal-session concerns stay outside the core: raw mode, the alternate
+screen, size queries and resize signals, mouse reporting and parsing, probing
+for mode 2026 support, and cell pixel size queries. They belong in a future
+`trend-term` crate.
+
+`examples/procedural_source.rs` uses two surfaces (the same bytes it produced
+before M4) and accepts `--encoder half|quadrant|sextant|braille|density`. `examples/surface_demo.rs` shows capability-based encoder
+choice, damage regions, output options, and click-to-pixel mapping.
+
+### Composition and text overlays (M5)
+
+Two small operations let an application put a HUD, labels, or sprites over
+rendered or decoded frames. TRend still holds no layers or scene: the host
+calls these in whatever order it wants.
+
+- `compose::blend_over(source, &mut target, x, y)` draws a `PixelFrameView`
+  of any layout over a `PixelViewMut` with straight-alpha source-over
+  compositing, exactly rounded. The source is clipped at any offset.
+  Opaque pixels copy and transparent ones are skipped. It returns the
+  touched `PixelRect`, which is the damage to pass to
+  `Surface::encode_region`.
+- `text::put_str(&mut cells, column, row, text, style)` writes text into a
+  `CellViewMut`, one character per cell, clipped at the view's edge, and
+  returns the number of cells written. `TextStyle { foreground, background,
+  attributes }` has `new`, `with_background`, and `with_attributes`.
+  `TextBackground::{Keep, Default, Color(_)}` chooses what is behind each
+  character; `Keep` leaves the image's cell background in place.
+- Characters that would shift the rest of the row are written as `?`:
+  controls, tabs, newlines, and characters known to be wide (CJK, most
+  emoji) or zero width (combining marks, joiners). Lay out wide text in the
+  host if you need it.
+- Draw text into a panel through `CellViewMut::sub`, and clear the panel
+  first with `CellViewMut::fill`.
+
+```rust
+surface.draw(|pixels, spec| app.render(pixels, spec))?;
+if let Some(damage) = blend_over(sprite.view(), &mut surface.pixels_mut(), x, y) {
+    surface.encode_region(damage)?;
+}
+let style = TextStyle::new(Color::rgb(255, 230, 120)).with_attributes(Cell::BOLD);
+put_str(&mut surface.cells_mut(), 1, 0, "HP 97", style);
+surface.present(&mut stdout)?;
+```
+
+All of these allocate nothing. `examples/hud_3d.rs` shows a software-rendered
+3D scene with a blended radar sprite and a text panel. See
+[readback-recipes.md](readback-recipes.md) for handing frames from wgpu,
+OpenGL, and CEF to a surface.
 
 ### Experimental Glyph API
 
@@ -229,6 +594,16 @@ viewport_height` `TrendCell` values and compare `trend_cell_size()` with the
 host layout before rendering. New C behavior should remain additive and
 size-versioned.
 
+`scripts/c-consumer-smoke.sh` (M6) builds the library and compiles
+`tests/c/consumer_smoke.c` as strict C11 against the header. It checks the
+struct sizes and field offsets at compile time, then calls every export and
+checks results, error codes, and buffer-length rules at run time.
+
+The v1 ABI exposes only the legacy half-block `Renderer`. A v2 surface over
+`Surface` (encoders, layouts, regions, overlays, and presentation) is
+designed in [ffi-v2-design.md](ffi-v2-design.md) but not implemented; v1
+stays unchanged.
+
 ## Feature and Platform Matrix
 
 | Capability | Windows | Linux/macOS |
@@ -259,6 +634,11 @@ seek results, and deadline decisions needed for a host-managed synchronization
 policy. Hosts select terminal capabilities, schedule frames, manage
 cancellation and resize generations, write emitted ANSI bytes, and clear old
 positioned regions when layouts move or shrink.
+
+Terminal session handling (raw mode, the alternate screen, size and resize,
+input, and capability probing) is planned as an optional `trend-term` crate
+that the core never depends on; see
+[trend-term-design.md](trend-term-design.md).
 
 ### Decoder Compatibility Requirements
 

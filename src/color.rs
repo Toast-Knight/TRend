@@ -19,6 +19,29 @@ const ANSI_16: [(u8, u8, u8); 16] = [
     (255, 255, 255),
 ];
 
+/// Perceived brightness of a color (BT.709 weights, integer), 0 for the
+/// terminal default color.
+pub(crate) fn luminance(color: Color) -> u8 {
+    if color.kind == 0 {
+        return 0;
+    }
+    ((u16::from(color.red) * 54 + u16::from(color.green) * 183 + u16::from(color.blue) * 19) / 256)
+        as u8
+}
+
+/// Unicode shade ramp from empty to full, shared by monochrome presentation
+/// and the `Density` encoder.
+pub(crate) const SHADE_RAMP: [char; 5] = [' ', '░', '▒', '▓', '█'];
+
+/// ASCII ramp from empty to dense, shared by monochrome presentation and the
+/// `Density` encoder.
+pub(crate) const ASCII_RAMP: [char; 10] = [' ', '.', ':', '-', '=', '+', '*', '#', '%', '@'];
+
+/// The ramp step for a brightness value.
+pub(crate) fn ramp_glyph(ramp: &[char], value: u8) -> char {
+    ramp[usize::from(value) * (ramp.len() - 1) / 255]
+}
+
 pub const fn ansi256_index(color: Color) -> u8 {
     let red = quantize_six(color.red);
     let green = quantize_six(color.green);
