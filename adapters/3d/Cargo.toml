@@ -1,0 +1,11 @@
+[package]
+name = "trend-3d"
+version = "0.1.0"
+edition = "2024"
+description = "Optional dependency-free software 3D for TRend: model loading (OBJ, STL, PLY) and a z-buffer rasterizer that draws into TRend surfaces"
+license = "Apache-2.0"
+repository = "https://github.com/DigitalDolos/TRend"
+publish = false
+
+[dependencies]
+trend = { path = "../.." }
