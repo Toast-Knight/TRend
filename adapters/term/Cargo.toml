@@ -5,6 +5,8 @@ edition = "2024"
 description = "Optional terminal session for TRend: raw mode, the alternate screen, size and resize, keyboard and mouse events, and timed frame writes"
 license = "Apache-2.0"
 repository = "https://github.com/DigitalDolos/TRend"
+keywords = ["terminal", "tui", "input", "raw-mode", "crossterm"]
+categories = ["command-line-interface"]
 publish = false
 
 [dependencies]

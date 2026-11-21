@@ -19,7 +19,7 @@
 //! use trend::{HalfBlock, Surface};
 //! use trend_term::{Event, Key, Session, SessionOptions};
 //!
-//! let mut session = Session::enter(SessionOptions::default())?;
+//! let mut session = Session::enter(SessionOptions::new())?;
 //! let info = session.info();
 //! let mut surface = Surface::new(HalfBlock, info.viewport, info.capabilities)?;
 //! surface.set_output_options(info.recommended_output_options());
@@ -58,7 +58,18 @@ use crossterm::{cursor, execute, style, terminal};
 use trend::{CellAspect, OutputOptions, TerminalCapabilities, Viewport};
 
 /// What [`Session::enter`] sets up. Everything set up is undone when the session ends.
+///
+/// Start from [`SessionOptions::new`] (or `default()`, which is the same) and change what differs
+/// with the `with_` methods; more options may be added later.
+///
+/// ```
+/// use trend_term::SessionOptions;
+///
+/// let options = SessionOptions::new().with_mouse(true).with_title("My program");
+/// assert!(options.mouse && options.alternate_screen);
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct SessionOptions {
     /// Draw on the alternate screen, so the user's scrollback comes back afterwards.
     pub alternate_screen: bool,
@@ -89,8 +100,51 @@ impl Default for SessionOptions {
     }
 }
 
+impl SessionOptions {
+    /// The alternate screen with a hidden cursor and key releases; no mouse, no title.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Draw on the alternate screen (on by default).
+    #[must_use]
+    pub fn with_alternate_screen(mut self, enabled: bool) -> Self {
+        self.alternate_screen = enabled;
+        self
+    }
+
+    /// Hide the cursor (on by default).
+    #[must_use]
+    pub fn with_hidden_cursor(mut self, enabled: bool) -> Self {
+        self.hide_cursor = enabled;
+        self
+    }
+
+    /// Report the mouse (off by default).
+    #[must_use]
+    pub fn with_mouse(mut self, enabled: bool) -> Self {
+        self.mouse = enabled;
+        self
+    }
+
+    /// Ask for key releases, for exact held keys (on by default).
+    #[must_use]
+    pub fn with_key_releases(mut self, enabled: bool) -> Self {
+        self.key_releases = enabled;
+        self
+    }
+
+    /// Set the window title.
+    #[must_use]
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+}
+
 /// A key, without modifiers. Letters arrive lower-case with [`Modifiers::shift`] set.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
 pub enum Key {
     Char(char),
     Enter,
@@ -127,6 +181,7 @@ pub enum KeyState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum MouseButton {
     Left,
     Right,
@@ -134,6 +189,7 @@ pub enum MouseButton {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum MouseAction {
     Down(MouseButton),
     Up(MouseButton),
@@ -144,8 +200,9 @@ pub enum MouseAction {
     ScrollDown,
 }
 
-/// Something the terminal reported.
+/// Something the terminal reported. More kinds may be added, so end a `match` with `_ => {}`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Event {
     Key {
         key: Key,
@@ -168,6 +225,7 @@ pub enum Event {
 
 /// What is known about the terminal.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct TerminalInfo {
     /// Size in cells.
     pub viewport: Viewport,
@@ -199,6 +257,7 @@ impl TerminalInfo {
 
 /// How a frame's write went.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct FrameTiming {
     pub bytes: usize,
     /// Time to write and flush: how long the terminal took to accept the frame.

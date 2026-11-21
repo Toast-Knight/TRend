@@ -209,6 +209,7 @@ impl Bounds {
 
 /// Counts that describe a loaded mesh.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct MeshStats {
     pub vertices: usize,
     pub triangles: usize,

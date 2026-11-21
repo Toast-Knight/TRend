@@ -2,9 +2,11 @@
 name = "trend-3d"
 version = "0.1.0"
 edition = "2024"
-description = "Optional dependency-free software 3D for TRend: model loading (OBJ, STL, PLY) and a z-buffer rasterizer that draws into TRend surfaces"
+description = "Optional dependency-free software 3D for TRend: glTF, GLB, OBJ, STL and PLY loading and a physically based renderer that draws into TRend surfaces"
 license = "Apache-2.0"
 repository = "https://github.com/DigitalDolos/TRend"
+keywords = ["terminal", "3d", "gltf", "software-rendering", "pbr"]
+categories = ["rendering", "graphics"]
 publish = false
 
 [dependencies]

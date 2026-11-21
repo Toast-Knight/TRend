@@ -32,6 +32,7 @@ pub enum Shading {
 
 /// What is drawn.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum RenderMode {
     /// Lit surfaces.
     #[default]
@@ -69,6 +70,7 @@ pub struct Fog {
 
 /// What fills pixels no surface covers.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Background {
     /// Alpha 0, for compositing (terminal default colour after encoding).
     Transparent,
@@ -179,6 +181,7 @@ impl Default for RenderStyle {
 
 /// What one frame drew.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct FrameStats {
     /// Triangles that reached the rasterizer (after culling and clipping).
     pub triangles: usize,

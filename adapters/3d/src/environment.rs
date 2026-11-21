@@ -13,6 +13,7 @@ use crate::mesh::Texture;
 
 /// Built-in environments, drawn procedurally (no image files needed).
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[non_exhaustive]
 pub enum EnvironmentPreset {
     /// Grey studio with soft boxes: even, flattering light.
     Studio,

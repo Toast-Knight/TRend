@@ -61,11 +61,11 @@ fn encoder(index: usize) -> (Box<dyn CellEncoder>, &'static str) {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut session = Session::enter(SessionOptions {
-        title: Some("TRend showcase".into()),
-        mouse: true,
-        ..SessionOptions::default()
-    })?;
+    let mut session = Session::enter(
+        SessionOptions::new()
+            .with_title("TRend showcase")
+            .with_mouse(true),
+    )?;
     let info = session.info();
     let (mut encoder_index, mut preset_index) = (0, 1);
     let mut surface = Surface::new(encoder(encoder_index).0, info.viewport, info.capabilities)?;
@@ -118,7 +118,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     MouseAction::Up(_) => grabbed = None,
                     MouseAction::ScrollUp => camera.zoom(0.9),
                     MouseAction::ScrollDown => camera.zoom(1.1),
-                    MouseAction::Moved => {}
+                    _ => {}
                 },
                 _ => {}
             }

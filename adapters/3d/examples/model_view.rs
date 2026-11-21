@@ -2,7 +2,7 @@
 //! encoder's resolution and pixel aspect, and the surface encodes and presents only what changed.
 //!
 //! ```text
-//! cargo run --release -p trend-3d --example model_view -- MODEL.obj|stl|ply
+//! cargo run --release -p trend-3d --example model_view -- MODEL.glb|gltf|obj|stl|ply
 //!     [--encoder half|quadrant|sextant|braille] [--size COLSxROWS] [--frames N] [--once]
 //!     [--mode shaded|edges|wire] [--flat] [--z-up]
 //! ```

@@ -20,13 +20,14 @@ use std::path::Path;
 
 use crate::mesh::{Mesh, Texture};
 
-pub use gltf::parse_gltf;
-pub use obj::{parse_obj, parse_obj_with};
-pub use ply::parse_ply;
-pub use stl::parse_stl;
+use gltf::parse_gltf;
+use obj::{parse_obj, parse_obj_with};
+use ply::parse_ply;
+use stl::parse_stl;
 
-/// A model file format.
+/// A model file format. More may be added.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
 pub enum ModelFormat {
     Obj,
     Stl,

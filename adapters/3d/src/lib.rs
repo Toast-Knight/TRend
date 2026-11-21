@@ -43,7 +43,7 @@ pub use camera::{OrbitCamera, UpAxis, ViewBasis};
 pub use environment::{Environment, EnvironmentPreset};
 pub use load::{
     ImageDecoder, ModelError, ModelFormat, ModelLimits, load, load_from_bytes,
-    load_from_bytes_with, load_with, parse_gltf, parse_obj, parse_obj_with, parse_ply, parse_stl,
+    load_from_bytes_with, load_with,
 };
 pub use math::Vec3;
 pub use mesh::{Bounds, DEFAULT_CREASE_DEGREES, Material, Mesh, MeshStats, Texture};

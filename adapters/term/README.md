@@ -31,7 +31,7 @@ picture that follows the terminal's size, a square moved with the arrow keys, an
 Change its `draw` closure to draw anything.
 
 ```rust
-let mut session = Session::enter(SessionOptions::default())?;
+let mut session = Session::enter(SessionOptions::new())?;
 let info = session.info();
 let mut surface = Surface::new(HalfBlock, info.viewport, info.capabilities)?;
 surface.set_output_options(info.recommended_output_options());

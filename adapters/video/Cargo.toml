@@ -5,6 +5,8 @@ edition = "2024"
 description = "Optional bounded video decoders for TRend"
 license = "Apache-2.0"
 repository = "https://github.com/DigitalDolos/TRend"
+keywords = ["terminal", "video", "mp4", "webm", "decoder"]
+categories = ["multimedia::video"]
 publish = false
 
 [features]

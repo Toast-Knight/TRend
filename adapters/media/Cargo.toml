@@ -5,6 +5,8 @@ edition = "2024"
 description = "Application-neutral media presentation primitives for TRend"
 license = "Apache-2.0"
 repository = "https://github.com/DigitalDolos/TRend"
+keywords = ["terminal", "media", "image", "video", "preview"]
+categories = ["multimedia"]
 publish = false
 
 [features]

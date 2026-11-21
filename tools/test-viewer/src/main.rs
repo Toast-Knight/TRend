@@ -22,10 +22,7 @@ use trend_video::{Container, DecodeLimits as VideoLimits, VideoDecoder};
 /// Takes over the terminal for viewing. The viewer reads single key presses only, so it does not
 /// ask for key releases.
 fn enter_session() -> io::Result<Session> {
-    Session::enter(SessionOptions {
-        key_releases: false,
-        ..SessionOptions::default()
-    })
+    Session::enter(SessionOptions::new().with_key_releases(false))
 }
 
 /// The cells the media may fill: the terminal less the status line's rows, and less the last
