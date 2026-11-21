@@ -1,0 +1,11 @@
+[package]
+name = "trend-text"
+version = "0.1.0"
+edition = "2024"
+description = "Optional dependency-free scaled text for TRend: a built-in pixel font and a TrueType rasterizer that draw text into TRend pixels"
+license = "Apache-2.0"
+repository = "https://github.com/DigitalDolos/TRend"
+publish = false
+
+[dependencies]
+trend = { path = "../.." }
