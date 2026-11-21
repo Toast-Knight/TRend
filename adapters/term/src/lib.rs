@@ -6,8 +6,9 @@
 //!
 //! - **Enter and restore:** raw mode, the alternate screen, a hidden cursor, mouse reporting and a
 //!   window title, all put back when the [`Session`] is dropped, and also if the program panics.
-//! - **Size:** the terminal's size in cells, [`Event::Resize`] when it changes, and the shape of a
-//!   cell where the terminal reports its pixel size.
+//! - **Size:** the terminal's size in cells, [`Event::Resize`] when it changes (also on terminals
+//!   that never announce a resize), and the shape of a cell where the terminal reports its pixel
+//!   size.
 //! - **Input:** keys and mouse as plain events, and [`Session::is_down`] for held keys (exact where
 //!   the terminal reports key releases, estimated from auto-repeat elsewhere), which games need.
 //! - **Output:** [`Session::write_frame`] writes and flushes a frame's bytes and says how long the
@@ -53,7 +54,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use crossterm::event::{self as backend, KeyEventKind, KeyModifiers};
-use crossterm::{cursor, execute, terminal};
+use crossterm::{cursor, execute, style, terminal};
 use trend::{CellAspect, OutputOptions, TerminalCapabilities, Viewport};
 
 /// What [`Session::enter`] sets up. Everything set up is undone when the session ends.
@@ -66,6 +67,10 @@ pub struct SessionOptions {
     pub mouse: bool,
     /// Ask for key releases and repeats where the terminal can report them (the kitty keyboard
     /// protocol; the Windows console always reports them). Makes [`Session::is_down`] exact.
+    ///
+    /// Finding out means asking the terminal and waiting for its answer. Terminals answer at
+    /// once; one that answers nothing at all delays [`Session::enter`] by up to two seconds, so
+    /// turn this off in programs that only read key presses.
     pub key_releases: bool,
     /// The window title, which streaming and capture tools list.
     pub title: Option<String>,
@@ -220,6 +225,11 @@ fn restore() {
     if CURSOR_HIDDEN.swap(false, Ordering::SeqCst) {
         let _ = execute!(out, cursor::Show);
     }
+    let entered = RAW.load(Ordering::SeqCst);
+    if entered {
+        // Whatever colours the last frame left set must not leak into the shell's prompt.
+        let _ = execute!(out, style::SetAttribute(style::Attribute::Reset));
+    }
     if ALTERNATE.swap(false, Ordering::SeqCst) {
         let _ = execute!(out, terminal::LeaveAlternateScreen);
     }
@@ -275,11 +285,24 @@ impl HeldKeys {
     }
 }
 
+/// How often [`Session::poll`] compares the terminal's size with the last one it reported.
+const SIZE_CHECK: Duration = Duration::from_millis(250);
+
 /// The terminal, taken over for a program's lifetime. See the crate documentation.
 #[derive(Debug)]
 pub struct Session {
     info: TerminalInfo,
     held: HeldKeys,
+    size_checked: Instant,
+}
+
+/// The terminal's size in cells, asked of the terminal itself.
+fn viewport_now() -> io::Result<Viewport> {
+    let (columns, rows) = terminal::size()?;
+    Ok(Viewport {
+        width: columns.max(1),
+        height: rows.max(1),
+    })
 }
 
 fn modifiers(from: KeyModifiers) -> Modifiers {
@@ -390,7 +413,16 @@ impl Session {
                 previous(info);
             }));
         });
-        let (columns, rows) = terminal::size()?;
+        let viewport = viewport_now()?;
+        // TRend's output is escape sequences; a console that cannot be switched to them (before
+        // Windows 10) would show them as text.
+        #[cfg(windows)]
+        if !crossterm::ansi_support::supports_ansi() {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "this console does not support ANSI escape sequences",
+            ));
+        }
         terminal::enable_raw_mode()?;
         RAW.store(true, Ordering::SeqCst);
         let mut out = io::stdout();
@@ -433,10 +465,7 @@ impl Session {
         };
         Ok(Self {
             info: TerminalInfo {
-                viewport: Viewport {
-                    width: columns.max(1),
-                    height: rows.max(1),
-                },
+                viewport,
                 capabilities: TerminalCapabilities::detect(),
                 cell_pixels: cell_pixels(),
                 key_releases,
@@ -445,6 +474,7 @@ impl Session {
                 releases: key_releases,
                 ..HeldKeys::default()
             },
+            size_checked: Instant::now(),
         })
     }
 
@@ -453,13 +483,37 @@ impl Session {
         self.info
     }
 
+    /// Compares the terminal's size with the last one reported; `Some` when it changed.
+    fn size_changed(&mut self) -> Option<Event> {
+        self.size_checked = Instant::now();
+        let viewport = viewport_now().ok()?;
+        if viewport == self.info.viewport {
+            return None;
+        }
+        self.info.viewport = viewport;
+        self.info.cell_pixels = cell_pixels();
+        Some(Event::Resize(viewport))
+    }
+
     /// The next event, waiting up to `timeout` (zero only checks). `None` when nothing arrived.
+    ///
+    /// [`Event::Resize`] is reported once per change of size, with the size the terminal gives
+    /// when asked. The size is also checked a few times a second, so a resize is seen on terminals
+    /// that do not announce it.
     pub fn poll(&mut self, timeout: Duration) -> io::Result<Option<Event>> {
         let deadline = Instant::now() + timeout;
         loop {
+            if self.size_checked.elapsed() >= SIZE_CHECK
+                && let Some(resize) = self.size_changed()
+            {
+                return Ok(Some(resize));
+            }
             let wait = deadline.saturating_duration_since(Instant::now());
-            if !backend::poll(wait)? {
-                return Ok(None);
+            if !backend::poll(wait.min(SIZE_CHECK))? {
+                if wait <= SIZE_CHECK {
+                    return Ok(None);
+                }
+                continue;
             }
             let Some(event) = translate(backend::read()?) else {
                 continue;
@@ -470,10 +524,12 @@ impl Session {
                     modifiers,
                     state,
                 } => self.held.record(key, modifiers, state, Instant::now()),
-                Event::Resize(viewport) => {
-                    self.info.viewport = viewport;
-                    self.info.cell_pixels = cell_pixels();
-                }
+                // The backend's own numbers are not used: on the Windows console they describe
+                // the scroll-back buffer, not the window.
+                Event::Resize(_) => match self.size_changed() {
+                    Some(resize) => return Ok(Some(resize)),
+                    None => continue,
+                },
                 // Keys released while the window was unfocused never report it.
                 Event::FocusLost => self.held.keys.clear(),
                 _ => {}

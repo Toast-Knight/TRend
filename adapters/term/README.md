@@ -5,9 +5,11 @@ turns pixels into cells and cells into bytes and never touches the terminal itse
 does the rest, so a program doesn't have to write it again.
 
 - **Enter and restore.** Raw mode, the alternate screen, a hidden cursor, mouse reporting and a
-  window title, all put back when the `Session` is dropped, and also if the program panics.
-- **Size.** The terminal's size in cells, a `Resize` event when it changes, and the real shape
-  of a cell where the terminal reports its pixel size (so 3D keeps its proportions).
+  window title, all put back (and colours reset) when the `Session` is dropped, and also if the
+  program panics, so the panic's message is readable.
+- **Size.** The terminal's size in cells, a `Resize` event when it changes (also on terminals
+  that never announce a resize: the size is checked a few times a second), and the real shape of
+  a cell where the terminal reports its pixel size (so 3D keeps its proportions).
 - **Input.** Keys and mouse as plain events, plus `Session::is_down(key)` for held keys: exact
   where the terminal reports key releases (the Windows console; kitty, WezTerm, foot, Ghostty and
   others with the kitty keyboard protocol), estimated from auto-repeat elsewhere.
@@ -51,8 +53,12 @@ cargo run --release -p trend-term --example showcase
 ```
 
 [`examples/showcase.rs`](examples/showcase.rs) puts the optional crates together: a golden ring
-drawn by `trend-3d` under a sky it reflects, a title drawn by `trend-text`, arrow keys to turn it,
-`E` for the next environment and `Tab` for the next cell encoder.
+drawn by `trend-3d` under a sky it reflects, a title drawn by `trend-text`, arrow keys or a mouse
+drag to turn it, the wheel to zoom, `E` for the next environment and `Tab` for the next cell
+encoder.
+
+TRend's own media viewer, [`tools/test-viewer`](../../tools/test-viewer), runs on this crate too:
+images, animations and video with a status line, on Windows and Unix from one piece of code.
 
 ## Not yet
 

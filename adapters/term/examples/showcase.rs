@@ -5,7 +5,8 @@
 //! cargo run --release -p trend-term --example showcase
 //! ```
 //!
-//! Arrow keys turn the ring, E changes the environment, Tab the cell encoder, Esc or Q quits.
+//! Arrow keys or dragging with the mouse turn the ring, the wheel zooms, E changes the
+//! environment, Tab the cell encoder, Esc or Q quits.
 
 use std::f32::consts::TAU;
 use std::sync::Arc;
@@ -16,7 +17,7 @@ use trend_3d::{
     Background, Environment, EnvironmentPreset, Material, Mesh, OrbitCamera, RenderStyle, Renderer,
     UpAxis,
 };
-use trend_term::{Event, Key, KeyState, Session, SessionOptions};
+use trend_term::{Event, Key, KeyState, MouseAction, Session, SessionOptions};
 use trend_text::{Font, TextStyle, draw_text};
 
 /// A ring (torus) with one shiny gold material.
@@ -62,6 +63,7 @@ fn encoder(index: usize) -> (Box<dyn CellEncoder>, &'static str) {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut session = Session::enter(SessionOptions {
         title: Some("TRend showcase".into()),
+        mouse: true,
         ..SessionOptions::default()
     })?;
     let info = session.info();
@@ -78,6 +80,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..RenderStyle::default()
     };
     let mut last = Instant::now();
+    // Where the mouse was when last seen with a button held.
+    let mut grabbed: Option<(u16, u16)> = None;
     loop {
         while let Some(event) = session.poll(Duration::ZERO)? {
             match event {
@@ -95,6 +99,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     _ => {}
                 },
+                Event::Mouse {
+                    action,
+                    column,
+                    row,
+                    ..
+                } => match action {
+                    MouseAction::Down(_) => grabbed = Some((column, row)),
+                    MouseAction::Drag(_) => {
+                        let (from_column, from_row) = grabbed.unwrap_or((column, row));
+                        // A cell is about twice as tall as wide, so a row turns twice as far.
+                        camera.orbit(
+                            (f32::from(column) - f32::from(from_column)) * -0.05,
+                            (f32::from(row) - f32::from(from_row)) * 0.1,
+                        );
+                        grabbed = Some((column, row));
+                    }
+                    MouseAction::Up(_) => grabbed = None,
+                    MouseAction::ScrollUp => camera.zoom(0.9),
+                    MouseAction::ScrollDown => camera.zoom(1.1),
+                    MouseAction::Moved => {}
+                },
                 _ => {}
             }
         }
@@ -103,9 +128,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let turn = |positive: Key, negative: Key| {
             f32::from(session.is_down(positive)) - f32::from(session.is_down(negative))
         };
-        // The ring spins slowly on its own; held arrow keys turn it faster or tilt it.
+        // The ring spins slowly on its own unless the mouse holds it; held arrow keys turn it
+        // faster or tilt it.
+        let spin = if grabbed.is_some() { 0.0 } else { 0.5 };
         camera.orbit(
-            (0.5 + 2.0 * turn(Key::Right, Key::Left)) * seconds,
+            (spin + 2.0 * turn(Key::Right, Key::Left)) * seconds,
             1.5 * turn(Key::Up, Key::Down) * seconds,
         );
         let preset = EnvironmentPreset::ALL[preset_index % EnvironmentPreset::ALL.len()];
