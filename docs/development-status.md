@@ -7,7 +7,7 @@ focused on project facts, recent events, and actionable next work.
 ## Current baseline
 
 - Branch: `main`
-- Cleanup checkpoint: `4691d41` (`Overhaul repository developer experience`)
+- Cleanup checkpoint: the `Overhaul repository developer experience` commit
 - Workspace version: `0.1.0`
 - Release tag: not created or pushed
 - Crates.io publishing: disabled intentionally
@@ -274,7 +274,7 @@ focused on project facts, recent events, and actionable next work.
 - Added one-command repository validation and tag-gated GitHub releases.
 - Validated Windows and Linux media suites, Android ARM64 cross-build/package,
   and maintainer-reported Android image/animation runtime behavior.
-- Created cleanup checkpoint commit `4691d41`.
+- Created the cleanup checkpoint commit (`Overhaul repository developer experience`).
 
 ## Next milestone: Android MP4/H.264
 

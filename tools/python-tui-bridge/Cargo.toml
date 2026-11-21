@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "Optional media bridge for the Python terminal integration laboratory"
 license = "Apache-2.0"
-repository = "https://github.com/DigitalDolos/TRend"
+repository = "https://github.com/Toast-Knight/TRend"
 publish = false
 
 [dependencies]

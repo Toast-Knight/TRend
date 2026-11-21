@@ -4,7 +4,7 @@ Snapshot of what TRend is today, taken before any engine-level refactor.
 Companion document: [architecture-proposal.md](architecture-proposal.md).
 
 - Date: 2026-09-25
-- Basis: commit `4691d41` plus uncommitted `README.md` / `.gitignore` edits
+- Basis: the `Overhaul repository developer experience` commit plus uncommitted `README.md` / `.gitignore` edits
 - Method: full read of the core crate (`src/`); public surface and dispatch
   paths of adapters, tools, and platform video backends. Tests were not run
   during the audit.

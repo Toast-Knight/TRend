@@ -48,8 +48,8 @@ TRend is not on crates.io yet. Until it is, depend on it from this repository:
 
 ```toml
 [dependencies]
-trend = { git = "https://github.com/DigitalDolos/TRend" }
-trend-term = { git = "https://github.com/DigitalDolos/TRend" }
+trend = { git = "https://github.com/Toast-Knight/TRend" }
+trend-term = { git = "https://github.com/Toast-Knight/TRend" }
 ```
 
 ## The crates

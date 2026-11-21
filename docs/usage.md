@@ -89,8 +89,8 @@ alongside a checkout:
 
 ```toml
 [dependencies]
-trend = { git = "https://github.com/DigitalDolos/TRend" }
-trend-image = { git = "https://github.com/DigitalDolos/TRend" }
+trend = { git = "https://github.com/Toast-Knight/TRend" }
+trend-image = { git = "https://github.com/Toast-Knight/TRend" }
 # or: trend = { path = "../TRend" }
 ```
 
