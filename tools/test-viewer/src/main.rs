@@ -1,11 +1,8 @@
 use std::collections::BTreeMap;
 use std::error::Error;
-#[cfg(windows)]
-use std::ffi::c_void;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
-use std::thread;
 use std::time::{Duration, Instant};
 
 use trend::{
@@ -19,166 +16,45 @@ use trend_animation::{DecodeLimits as AnimationLimits, DecodedAnimation, decode_
 use trend_image::{DecodeError as ImageError, decode_webp as decode_static_webp};
 use trend_image::{DecodeLimits as ImageLimits, decode_jpeg, decode_png};
 use trend_media::{MediaLimits, MediaSource};
+use trend_term::{Event, Key, KeyState, Session, SessionOptions};
 use trend_video::{Container, DecodeLimits as VideoLimits, VideoDecoder};
 
-#[cfg(not(windows))]
-use crossterm::{
-    event::{Event, KeyCode, KeyEventKind, poll, read},
-    execute,
-    terminal::{
-        EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode, size,
-    },
-};
-
-#[cfg(windows)]
-const STD_OUTPUT_HANDLE: u32 = u32::MAX - 10;
-#[cfg(windows)]
-const ENABLE_VIRTUAL_TERMINAL_PROCESSING: u32 = 0x0004;
-
-#[cfg(windows)]
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct Coord {
-    x: i16,
-    y: i16,
+/// Takes over the terminal for viewing. The viewer reads single key presses only, so it does not
+/// ask for key releases.
+fn enter_session() -> io::Result<Session> {
+    Session::enter(SessionOptions {
+        key_releases: false,
+        ..SessionOptions::default()
+    })
 }
 
-#[cfg(windows)]
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct SmallRect {
-    left: i16,
-    top: i16,
-    right: i16,
-    bottom: i16,
+/// The cells the media may fill: the terminal less the status line's rows, and less the last
+/// column, which some consoles wrap on.
+fn media_viewport(session: &Session) -> Viewport {
+    let terminal = session.info().viewport;
+    Viewport {
+        width: terminal.width.saturating_sub(1).max(1),
+        height: terminal.height.saturating_sub(2).max(1),
+    }
 }
 
-#[cfg(windows)]
-#[repr(C)]
-struct ConsoleScreenBufferInfo {
-    size: Coord,
-    cursor_position: Coord,
-    attributes: u16,
-    window: SmallRect,
-    maximum_window_size: Coord,
-}
-
-#[cfg(windows)]
-#[link(name = "kernel32")]
-unsafe extern "system" {
-    fn GetStdHandle(std_handle: u32) -> *mut c_void;
-    fn GetConsoleMode(console_handle: *mut c_void, mode: *mut u32) -> i32;
-    fn SetConsoleMode(console_handle: *mut c_void, mode: u32) -> i32;
-    fn GetConsoleScreenBufferInfo(
-        console_handle: *mut c_void,
-        info: *mut ConsoleScreenBufferInfo,
-    ) -> i32;
-}
-
-#[cfg(windows)]
-#[link(name = "msvcrt")]
-unsafe extern "C" {
-    fn _kbhit() -> i32;
-    fn _getch() -> i32;
-}
-
-#[cfg(windows)]
-struct TerminalSession {
-    output_handle: *mut c_void,
-    original_mode: u32,
-}
-
-#[cfg(not(windows))]
-struct TerminalSession;
-
-#[cfg(windows)]
-impl TerminalSession {
-    fn enter() -> io::Result<Self> {
-        let output_handle = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
-        let mut original_mode = 0;
-        if output_handle.is_null()
-            || unsafe { GetConsoleMode(output_handle, &mut original_mode) } == 0
-            || unsafe {
-                SetConsoleMode(
-                    output_handle,
-                    original_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING,
-                )
-            } == 0
-        {
-            return Err(io::Error::last_os_error());
+/// The next key press, waiting up to `wait` for it. Returns early with `None` when the terminal
+/// is resized, so the caller redraws at the new size at once. Ctrl+C reads as `Q`.
+fn next_key(session: &mut Session, wait: Duration) -> io::Result<Option<Key>> {
+    let deadline = Instant::now() + wait;
+    loop {
+        match session.poll(deadline.saturating_duration_since(Instant::now()))? {
+            Some(Event::Key {
+                key,
+                modifiers,
+                state: KeyState::Press | KeyState::Repeat,
+            }) => {
+                let interrupt = modifiers.control && key == Key::Char('c');
+                return Ok(Some(if interrupt { Key::Char('q') } else { key }));
+            }
+            Some(Event::Resize(_)) | None => return Ok(None),
+            Some(_) => {}
         }
-        print!("\x1b[?1049h\x1b[?25l");
-        io::stdout().flush()?;
-        Ok(Self {
-            output_handle,
-            original_mode,
-        })
-    }
-
-    fn viewport(&self) -> io::Result<Viewport> {
-        let mut info = ConsoleScreenBufferInfo {
-            size: Coord { x: 0, y: 0 },
-            cursor_position: Coord { x: 0, y: 0 },
-            attributes: 0,
-            window: SmallRect {
-                left: 0,
-                top: 0,
-                right: 0,
-                bottom: 0,
-            },
-            maximum_window_size: Coord { x: 0, y: 0 },
-        };
-        if unsafe { GetConsoleScreenBufferInfo(self.output_handle, &mut info) } == 0 {
-            return Err(io::Error::last_os_error());
-        }
-        let columns = i32::from(info.window.right) - i32::from(info.window.left) + 1;
-        let rows = i32::from(info.window.bottom) - i32::from(info.window.top) + 1;
-        Ok(Viewport {
-            width: u16::try_from((columns - 1).max(1)).unwrap_or(u16::MAX),
-            height: u16::try_from((rows - 2).max(1)).unwrap_or(u16::MAX),
-        })
-    }
-}
-
-#[cfg(not(windows))]
-impl TerminalSession {
-    fn enter() -> io::Result<Self> {
-        enable_raw_mode()?;
-        if let Err(error) = execute!(io::stdout(), EnterAlternateScreen) {
-            let _ = disable_raw_mode();
-            return Err(error);
-        }
-        print!("\x1b[?25l");
-        io::stdout().flush()?;
-        Ok(Self)
-    }
-
-    fn viewport(&self) -> io::Result<Viewport> {
-        let (columns, rows) = size()?;
-        Ok(Viewport {
-            width: columns.saturating_sub(1).max(1),
-            height: rows.saturating_sub(2).max(1),
-        })
-    }
-}
-
-#[cfg(windows)]
-impl Drop for TerminalSession {
-    fn drop(&mut self) {
-        print!("\x1b[0m\x1b[?25h\x1b[?1049l");
-        let _ = io::stdout().flush();
-        unsafe {
-            SetConsoleMode(self.output_handle, self.original_mode);
-        }
-    }
-}
-
-#[cfg(not(windows))]
-impl Drop for TerminalSession {
-    fn drop(&mut self) {
-        print!("\x1b[0m\x1b[?25h");
-        let _ = execute!(io::stdout(), LeaveAlternateScreen);
-        let _ = disable_raw_mode();
     }
 }
 
@@ -238,15 +114,6 @@ impl QualityMode {
         let index = Self::ALL.iter().position(|mode| *mode == self).unwrap_or(0);
         Self::ALL[(index + 1) % Self::ALL.len()]
     }
-}
-
-#[cfg_attr(not(windows), allow(dead_code))]
-#[derive(Clone, Copy)]
-enum Key {
-    Character(char),
-    Left,
-    Right,
-    Escape,
 }
 
 const HELP: &str = "TRend Test Viewer
@@ -554,31 +421,33 @@ fn view_static(
     source: PixelFrameView<'_>,
     mut settings: ViewSettings,
 ) -> Result<(), Box<dyn Error>> {
-    let session = TerminalSession::enter()?;
+    let mut session = enter_session()?;
     let mut state = ViewerState::new();
     let mut dirty = true;
 
     loop {
-        let viewport = session.viewport()?;
+        let viewport = media_viewport(&session);
         if dirty || state.viewport != Some(viewport) {
             state.render(source, viewport, settings)?;
-            state.present(&format!(
-                "{} | PNG {}x{} | fit: {} | {} | [1-3] quality [M] next [C/V/S] fit [Q] back",
-                file_name(path),
-                source.width(),
-                source.height(),
-                fit_name(settings.fit),
-                quality_label(settings)
-            ))?;
+            state.present(
+                &mut session,
+                &format!(
+                    "{} | PNG {}x{} | fit: {} | {} | [1-3] quality [M] next [C/V/S] fit [Q] back",
+                    file_name(path),
+                    source.width(),
+                    source.height(),
+                    fit_name(settings.fit),
+                    quality_label(settings)
+                ),
+            )?;
             dirty = false;
         }
-        if let Some(key) = read_key() {
+        if let Some(key) = next_key(&mut session, Duration::from_millis(30))? {
             dirty = update_settings(key, &mut settings);
-            if matches!(key, Key::Character('q')) {
+            if matches!(key, Key::Char('q')) {
                 return Ok(());
             }
         }
-        thread::sleep(Duration::from_millis(30));
     }
 }
 
@@ -587,7 +456,7 @@ fn view_animation(
     mut animation: DecodedAnimation,
     mut settings: ViewSettings,
 ) -> Result<(), Box<dyn Error>> {
-    let session = TerminalSession::enter()?;
+    let mut session = enter_session()?;
     let started = Instant::now();
     let mut state = ViewerState::new();
     let mut paused = settings.compare_all;
@@ -600,14 +469,14 @@ fn view_animation(
     loop {
         let now = started.elapsed();
         let position = animation.position(now);
-        let viewport = session.viewport()?;
+        let viewport = media_viewport(&session);
         if dirty || state.viewport != Some(viewport) || last_frame != position.frame_index {
             state.render(
                 animation.frame_at(position.frame_index)?,
                 viewport,
                 settings,
             )?;
-            state.present(&format!(
+            state.present(&mut session, &format!(
                 "{} | GIF frame {}/{} loop {} | {} | {} | [Space] pause [R] restart [Left/Right] seek [1-3] quality [M] next [Q] back",
                 file_name(path),
                 position.frame_index + 1,
@@ -620,10 +489,10 @@ fn view_animation(
             dirty = false;
         }
 
-        if let Some(key) = read_key() {
+        if let Some(key) = next_key(&mut session, Duration::from_millis(10))? {
             match key {
-                Key::Character('q') => return Ok(()),
-                Key::Character(' ') => {
+                Key::Char('q') => return Ok(()),
+                Key::Char(' ') => {
                     if paused {
                         animation.play(now);
                     } else {
@@ -632,7 +501,7 @@ fn view_animation(
                     paused = !paused;
                     dirty = true;
                 }
-                Key::Character('r') => {
+                Key::Char('r') => {
                     animation.restart(now);
                     dirty = true;
                 }
@@ -651,7 +520,6 @@ fn view_animation(
                 other => dirty = update_settings(other, &mut settings),
             }
         }
-        thread::sleep(Duration::from_millis(10));
     }
 }
 
@@ -660,7 +528,7 @@ fn view_video(
     mut decoder: VideoDecoder,
     mut settings: ViewSettings,
 ) -> Result<(), Box<dyn Error>> {
-    let session = TerminalSession::enter()?;
+    let mut session = enter_session()?;
     let started = Instant::now();
     let mut clock = PlaybackClock::new(Duration::ZERO);
     if settings.compare_all {
@@ -677,14 +545,14 @@ fn view_video(
         let timestamp = decoder
             .frame_for_time(media_time)?
             .map(|frame| frame.timestamp());
-        let viewport = session.viewport()?;
+        let viewport = media_viewport(&session);
         if dirty || state.viewport != Some(viewport) || timestamp != last_timestamp {
             if let Some(frame) = decoder.frame_for_time(media_time)? {
                 state.render(frame.view()?, viewport, settings)?;
                 last_timestamp = Some(frame.timestamp());
             }
             let info = decoder.info();
-            state.present(&format!(
+            state.present(&mut session, &format!(
                 "{} | VIDEO {}x{} {} | {}/{} | {} | {} | decoder: {} | audio: {} | dropped: {} buffered: {} | [Space] pause [R] restart [Left/Right] seek [1-3] quality [M] next [Q/Esc] back",
                 file_name(path),
                 info.width,
@@ -702,10 +570,10 @@ fn view_video(
             dirty = false;
         }
 
-        if let Some(key) = read_key() {
+        if let Some(key) = next_key(&mut session, Duration::from_millis(5))? {
             match key {
-                Key::Character('q') | Key::Escape => return Ok(()),
-                Key::Character(' ') => {
+                Key::Char('q') | Key::Esc => return Ok(()),
+                Key::Char(' ') => {
                     if paused {
                         clock.play(now);
                     } else {
@@ -714,7 +582,7 @@ fn view_video(
                     paused = !paused;
                     dirty = true;
                 }
-                Key::Character('r') => {
+                Key::Char('r') => {
                     decoder.restart()?;
                     clock.seek(Duration::ZERO, now);
                     dirty = true;
@@ -735,7 +603,6 @@ fn view_video(
                 other => dirty = update_settings(other, &mut settings),
             }
         }
-        thread::sleep(Duration::from_millis(5));
     }
 }
 
@@ -746,6 +613,8 @@ struct ViewerState {
     viewport: Option<Viewport>,
     generation: u64,
     last_render: Duration,
+    /// The frame and its status line, written to the terminal in one piece.
+    output: Vec<u8>,
 }
 
 impl ViewerState {
@@ -757,6 +626,7 @@ impl ViewerState {
             viewport: None,
             generation: 0,
             last_render: Duration::ZERO,
+            output: Vec::new(),
         }
     }
 
@@ -787,14 +657,14 @@ impl ViewerState {
         Ok(())
     }
 
-    fn present(&mut self, status: &str) -> io::Result<()> {
-        let mut stdout = io::stdout().lock();
+    fn present(&mut self, session: &mut Session, status: &str) -> io::Result<()> {
         let ansi = self.presenter.present(&self.cells);
         let ansi_bytes = ansi.len();
-        stdout.write_all(ansi)?;
+        self.output.clear();
+        self.output.extend_from_slice(ansi);
         write!(
-            stdout,
-            "\x1b[{};1H\x1b[0m\x1b[2K{} | viewport {}x{} | render {:.3} ms | ANSI {} B",
+            self.output,
+            "\x1b[{};1H\x1b[0m\x1b[J{} | viewport {}x{} | render {:.3} ms | ANSI {} B",
             self.cells.height() + 1,
             status,
             self.cells.width(),
@@ -802,62 +672,23 @@ impl ViewerState {
             self.last_render.as_secs_f64() * 1_000.0,
             ansi_bytes
         )?;
-        stdout.flush()
-    }
-}
-
-#[cfg(windows)]
-fn read_key() -> Option<Key> {
-    if unsafe { _kbhit() } == 0 {
-        return None;
-    }
-    let value = unsafe { _getch() };
-    if value == 0 || value == 224 {
-        return match unsafe { _getch() } {
-            75 => Some(Key::Left),
-            77 => Some(Key::Right),
-            _ => None,
-        };
-    }
-    if value == 27 {
-        Some(Key::Escape)
-    } else {
-        char::from_u32(value as u32).map(|character| Key::Character(character.to_ascii_lowercase()))
-    }
-}
-
-#[cfg(not(windows))]
-fn read_key() -> Option<Key> {
-    if !poll(Duration::ZERO).ok()? {
-        return None;
-    }
-    let Event::Key(event) = read().ok()? else {
-        return None;
-    };
-    if !matches!(event.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
-        return None;
-    }
-    match event.code {
-        KeyCode::Char(character) => Some(Key::Character(character.to_ascii_lowercase())),
-        KeyCode::Left => Some(Key::Left),
-        KeyCode::Right => Some(Key::Right),
-        KeyCode::Esc => Some(Key::Escape),
-        _ => None,
+        session.write_frame(&self.output)?;
+        Ok(())
     }
 }
 
 fn update_settings(key: Key, settings: &mut ViewSettings) -> bool {
     match key {
-        Key::Character('c') => settings.fit = FitMode::Contain,
-        Key::Character('v') => settings.fit = FitMode::Cover,
-        Key::Character('s') => settings.fit = FitMode::Stretch,
-        Key::Character('1') => settings.quality = QualityMode::Fast,
-        Key::Character('2') => settings.quality = QualityMode::Balanced,
-        Key::Character('3') => settings.quality = QualityMode::Quality,
-        Key::Character('m') => settings.quality = settings.quality.next(),
-        Key::Character('n') => settings.quality = QualityMode::Fast,
-        Key::Character('b') => settings.quality = QualityMode::Balanced,
-        Key::Character('a') => settings.quality = QualityMode::Quality,
+        Key::Char('c') => settings.fit = FitMode::Contain,
+        Key::Char('v') => settings.fit = FitMode::Cover,
+        Key::Char('s') => settings.fit = FitMode::Stretch,
+        Key::Char('1') => settings.quality = QualityMode::Fast,
+        Key::Char('2') => settings.quality = QualityMode::Balanced,
+        Key::Char('3') => settings.quality = QualityMode::Quality,
+        Key::Char('m') => settings.quality = settings.quality.next(),
+        Key::Char('n') => settings.quality = QualityMode::Fast,
+        Key::Char('b') => settings.quality = QualityMode::Balanced,
+        Key::Char('a') => settings.quality = QualityMode::Quality,
         _ => return false,
     }
     true

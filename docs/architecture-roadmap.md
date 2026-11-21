@@ -447,6 +447,11 @@ noticeably less code, with identical output.
 
 ### M7 (proposed): the terminal session and real-terminal throughput
 
+Status, 2026-11: `trend-term` stage 1 is built (session, size and resize, keys, mouse,
+timed writes) and the test viewer runs on it. Probing, the throughput measurements and the
+decisions that follow from them are still open. The external-renderer host was left without
+`trend-term` so that it measures the core alone.
+
 M6 showed TRend's own cost fits the budget; what remains unknown is the
 terminal. M7 builds the piece that makes TRend usable in a real terminal
 and, with it, measures the terminal.

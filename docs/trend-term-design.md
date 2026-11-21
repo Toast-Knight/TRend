@@ -3,8 +3,11 @@
 Status: **partly implemented** in `adapters/term` (2026-11): session enter and restore (also on
 panic), size and resize, keys with held-key state, mouse, the measured cell shape where the
 terminal's size report includes pixels, and timed frame writes, on the crossterm backend chosen
-in section 4. Not yet: probing by query (DECRQM 2026, `CSI 16 t`), a frame-drop policy, and
-porting the test viewer onto it. Nothing in the core changed.
+in section 4. The test viewer runs on it (its own Win32 console code and its direct crossterm
+use are gone), and the `showcase` example uses the mouse. Not yet: probing by query (DECRQM 2026,
+`CSI 16 t`) and a frame-drop policy. Nothing in the core changed.
+
+Section 2 describes the repository as it was before the crate existed.
 
 ## 1. The boundary
 

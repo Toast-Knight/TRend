@@ -22,8 +22,9 @@
 //! ```
 //!
 //! Without `--size`, the size comes from `COLUMNS`/`LINES` or defaults to
-//! 100×30. Detecting the real terminal size belongs to a terminal-session
-//! crate, not to TRend's core.
+//! 100×30. Detecting the real terminal size is what the optional
+//! `trend-term` crate does; this measurement harness stays without it so
+//! that everything it times and counts is TRend's core.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::env;

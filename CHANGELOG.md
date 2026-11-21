@@ -4,6 +4,17 @@ All notable changes to TRend are documented here.
 
 ## Unreleased
 
+- The test viewer now runs on `trend-term` on every platform. Its own Win32 console code
+  (`unsafe` declarations for the console and `msvcrt`) and its direct crossterm use are gone,
+  about 170 lines; behavior and controls are the same, a resize redraws at once, Ctrl+C quits,
+  and the status line no longer leaves stray characters when it wraps. The Windows build of the
+  viewer now includes crossterm (about 46 KB larger, measured with the GNU toolchain).
+- `trend-term`: `Resize` is reported once per change with the size the terminal gives when
+  asked, and the size is also checked a few times a second, so a resize is seen on terminals
+  that do not announce it (the Windows console's own event describes its scroll-back buffer).
+  Colours are reset when the session ends. On Windows, `Session::enter` fails cleanly on a
+  console without escape-sequence support. The `showcase` example turns with a mouse drag and
+  zooms with the wheel.
 - Added three optional crates under `adapters/`; the core is unchanged and depends on none of
   them:
   - `trend-term`: a terminal session (raw mode, the alternate screen, restore on exit and

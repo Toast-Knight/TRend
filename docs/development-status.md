@@ -34,6 +34,25 @@ focused on project facts, recent events, and actionable next work.
 
 ## Recent events
 
+### 2026-11-21: the test viewer runs on `trend-term`
+
+- `tools/test-viewer` uses `trend_term::Session` for everything that owns the terminal, on
+  Windows and Unix from one piece of code; it has no `unsafe` and no platform-specific code
+  left. Roadmap M7's first exit criterion is met in code.
+- `trend-term` gained what the port showed was missing: resize detection that does not depend
+  on the terminal announcing it, a colour reset on exit, and a clean failure on Windows consoles
+  without escape-sequence support. The `showcase` example uses the mouse.
+- The `external-renderer` host and the core's own examples stay without `trend-term` on
+  purpose: the first is a measurement harness for the core alone, the others must build with no
+  dependencies.
+- Validation: 325 workspace tests pass; clippy and rustfmt are clean; the viewer, `starter` and
+  `showcase` were driven in a Linux pseudo-terminal (keys, mouse, announced and unannounced
+  resizes, exit, and restore after a panic with `panic = "abort"`); the Windows builds compile
+  and link (`x86_64-pc-windows-gnu`). **Not run on a real Windows terminal**: run
+  `scripts\visual-test-windows.bat` or `cargo run -p trend-test-viewer -- <file>` to confirm.
+- Next: probing by query, real-terminal throughput (roadmap M7), and the public API review
+  before a first release.
+
 ### 2026-11-20: optional crates for 3D, text and the terminal session
 
 - New optional crates under `adapters/`, none of which the core depends on:

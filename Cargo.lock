@@ -701,11 +701,11 @@ dependencies = [
 name = "trend-test-viewer"
 version = "0.1.0"
 dependencies = [
- "crossterm",
  "trend",
  "trend-animation",
  "trend-image",
  "trend-media",
+ "trend-term",
  "trend-video",
 ]
 

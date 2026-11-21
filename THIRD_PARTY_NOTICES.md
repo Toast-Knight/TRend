@@ -108,8 +108,9 @@ explicitly enable either name add these packages:
 See [docs/api.md](docs/api.md) and the adapter READMEs for current experimental-format
 status and bounds.
 
-## Linux Terminal Viewer
+## Terminal Session
 
-The Linux interactive test viewer uses `crossterm` 0.29.0 under the MIT
-license. Its platform and synchronization dependencies are included in the
-complete dependency inventory linked above.
+The optional `trend-term` crate, and through it the interactive test viewer on
+every platform, uses `crossterm` 0.29.0 under the MIT license. Its platform and
+synchronization dependencies are included in the complete dependency inventory
+linked above. TRend's core library does not use it.

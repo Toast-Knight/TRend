@@ -23,7 +23,5 @@ trend = { path = "../.." }
 trend-animation = { path = "../../adapters/animation" }
 trend-image = { path = "../../adapters/image" }
 trend-media = { path = "../../adapters/media" }
+trend-term = { path = "../../adapters/term" }
 trend-video = { path = "../../adapters/video" }
-
-[target.'cfg(not(windows))'.dependencies]
-crossterm = "0.29.0"
