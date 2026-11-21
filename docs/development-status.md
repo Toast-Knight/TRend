@@ -48,8 +48,10 @@ focused on project facts, recent events, and actionable next work.
 - Validation: 325 workspace tests pass; clippy and rustfmt are clean; the viewer, `starter` and
   `showcase` were driven in a Linux pseudo-terminal (keys, mouse, announced and unannounced
   resizes, exit, and restore after a panic with `panic = "abort"`); the Windows builds compile
-  and link (`x86_64-pc-windows-gnu`). **Not run on a real Windows terminal**: run
-  `scripts\visual-test-windows.bat` or `cargo run -p trend-test-viewer -- <file>` to confirm.
+  and link (`x86_64-pc-windows-gnu`).
+- The maintainer ran the viewer and the `showcase` example on Windows on 2026-11-21 and reported
+  them working. Which terminal (Windows Terminal or the classic console) was not recorded, and
+  the full `scripts\visual-test-windows.bat` pass has not been repeated.
 - Next: probing by query, real-terminal throughput (roadmap M7), and the public API review
   before a first release.
 
