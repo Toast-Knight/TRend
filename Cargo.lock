@@ -618,8 +618,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tiny-raster"
+version = "0.1.0"
+
+[[package]]
 name = "trend"
 version = "0.1.0"
+
+[[package]]
+name = "trend-3d"
+version = "0.1.0"
+dependencies = [
+ "trend",
+]
 
 [[package]]
 name = "trend-animation"
@@ -627,6 +638,14 @@ version = "0.1.0"
 dependencies = [
  "gif",
  "image-webp",
+ "trend",
+]
+
+[[package]]
+name = "trend-external-renderer"
+version = "0.1.0"
+dependencies = [
+ "tiny-raster",
  "trend",
 ]
 
@@ -669,6 +688,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "trend-term"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
+ "trend",
+ "trend-3d",
+ "trend-text",
+]
+
+[[package]]
 name = "trend-test-viewer"
 version = "0.1.0"
 dependencies = [
@@ -678,6 +707,13 @@ dependencies = [
  "trend-image",
  "trend-media",
  "trend-video",
+]
+
+[[package]]
+name = "trend-text"
+version = "0.1.0"
+dependencies = [
+ "trend",
 ]
 
 [[package]]

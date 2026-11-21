@@ -1,0 +1,18 @@
+[package]
+name = "trend-term"
+version = "0.1.0"
+edition = "2024"
+description = "Optional terminal session for TRend: raw mode, the alternate screen, size and resize, keyboard and mouse events, and timed frame writes"
+license = "Apache-2.0"
+repository = "https://github.com/DigitalDolos/TRend"
+publish = false
+
+[dependencies]
+# The terminal backend. None of its types appear in this crate's public API, so it can be
+# replaced without changing programs that use trend-term.
+crossterm = "0.29.0"
+trend = { path = "../.." }
+
+[dev-dependencies]
+trend-3d = { path = "../3d" }
+trend-text = { path = "../text" }

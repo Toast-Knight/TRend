@@ -9,6 +9,22 @@ layout, input, scheduling, audio, and decoder lifetime.
 decoded RGBA8 -> PixelFrameView -> Renderer -> CellFrame -> AnsiPresenter -> terminal
 ```
 
+![A golden ring turning under a sky it reflects, with a title in scaled text, in a terminal](docs/images/showcase.gif)
+
+*The `showcase` example in a 120 × 36 terminal: `trend-3d` draws the ring, `trend-text` the
+title, `trend-term` runs the terminal, and the core turns the pixels into cells.*
+
+## Start in fifty lines
+
+```powershell
+cargo run --release -p trend-term --example starter
+cargo run --release -p trend-term --example showcase
+```
+
+[`adapters/term/examples/starter.rs`](adapters/term/examples/starter.rs) is a complete program:
+it opens the terminal, draws an animated picture that follows the window's size, moves a square
+with the arrow keys, and exits cleanly. Change its `draw` closure to draw anything.
+
 ## Five-minute quickstart
 
 Install a current stable Rust toolchain, clone the repository, and run these
@@ -37,7 +53,7 @@ Linux commands, or [docs/usage.md](docs/usage.md) for viewer and embedding flows
 | Path | Purpose |
 | --- | --- |
 | `src/` | Dependency-free renderer, ANSI presenter, timing, and C ABI |
-| `adapters/` | Image, animation, video, and unified media decoding |
+| `adapters/` | Optional crates: image, animation, video, and unified media decoding; a terminal session (`adapters/term`, `trend-term`); dependency-free software 3D (`adapters/3d`, `trend-3d`) and scaled text (`adapters/text`, `trend-text`) |
 | `examples/` | Minimal Rust render, terminal overlay, and Python hosts |
 | `tools/` | Test viewer, subprocess bridge, and Windows UI lab |
 | `tests/fixtures/media/` | Checked-in validation media |
@@ -47,6 +63,7 @@ Linux commands, or [docs/usage.md](docs/usage.md) for viewer and embedding flows
 
 ## Documentation
 
+- [Current development status and next work](docs/development-status.md)
 - [Architecture and ownership](docs/architecture.md)
 - [Rust APIs and feature flags](docs/api.md)
 - [Usage and integration](docs/usage.md)

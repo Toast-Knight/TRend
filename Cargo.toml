@@ -10,10 +10,15 @@ publish = false
 
 [workspace]
 members = [
+	"adapters/3d",
 	"adapters/animation",
 	"adapters/image",
 	"adapters/media",
+	"adapters/term",
+	"adapters/text",
 	"adapters/video",
+	"examples/external-renderer/host",
+	"examples/external-renderer/renderer",
 	"examples/first-render",
 	"tools/python-tui-bridge",
 	"tools/test-viewer",
