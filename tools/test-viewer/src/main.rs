@@ -659,19 +659,39 @@ impl ViewerState {
         let ansi_bytes = ansi.len();
         self.output.clear();
         self.output.extend_from_slice(ansi);
-        write!(
-            self.output,
-            "\x1b[{};1H\x1b[0m\x1b[J{} | viewport {}x{} | render {:.3} ms | ANSI {} B",
-            self.cells.height() + 1,
-            status,
+        let measurements = format!(
+            " | viewport {}x{} | render {:.3} ms | ANSI {} B",
             self.cells.width(),
             self.cells.height(),
             self.last_render.as_secs_f64() * 1_000.0,
             ansi_bytes
+        );
+        // The rows under the picture hold the status line. Text that ran past them would
+        // scroll the whole screen up by a line on every frame.
+        let terminal = session.info().viewport;
+        let rows = usize::from(terminal.height.saturating_sub(self.cells.height()));
+        let capacity = (rows * usize::from(terminal.width)).saturating_sub(1);
+        write!(
+            self.output,
+            "\x1b[{};1H\x1b[0m\x1b[J{}",
+            self.cells.height() + 1,
+            fit_status(status, &measurements, capacity)
         )?;
         session.write_frame(&self.output)?;
         Ok(())
     }
+}
+
+/// The status line cut to `capacity` characters: the measurements are kept whole where they fit,
+/// and the description before them (which ends with the key hints) gives way first.
+fn fit_status(description: &str, measurements: &str, capacity: usize) -> String {
+    let kept = capacity.saturating_sub(measurements.chars().count());
+    description
+        .chars()
+        .take(kept)
+        .chain(measurements.chars())
+        .take(capacity)
+        .collect()
 }
 
 fn update_settings(key: Key, settings: &mut ViewSettings) -> bool {
@@ -749,6 +769,24 @@ mod tests {
         ] {
             assert!(HELP.contains(option));
         }
+    }
+
+    #[test]
+    fn status_line_never_exceeds_its_rows() {
+        let tail = " | render 1.000 ms";
+        assert_eq!(
+            fit_status("file.gif | [Q] back", tail, 80),
+            "file.gif | [Q] back | render 1.000 ms"
+        );
+        // Too long: the description gives way and the measurements stay whole.
+        assert_eq!(
+            fit_status("file.gif | [Q] back", tail, 26),
+            "file.gif | render 1.000 ms"
+        );
+        // Shorter than the measurements alone: cut to what fits, never more.
+        assert_eq!(fit_status("file.gif", tail, 5), " | re");
+        assert_eq!(fit_status("file.gif", tail, 0), "");
+        assert_eq!(fit_status("né.gif | hints", " | é", 9).chars().count(), 9);
     }
 
     #[test]

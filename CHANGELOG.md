@@ -34,6 +34,12 @@ All notable changes to TRend are documented here.
 - The library crates carry `keywords` and `categories` for a later crates.io release;
   publishing stays disabled.
 
+### Fixed
+
+- Test viewer: a status line longer than the two rows under the picture no longer scrolls the
+  screen by a line on every frame in narrow terminals. It is cut to fit, keeping the
+  measurements.
+
 ### Added
 
 - The test viewer now runs on `trend-term` on every platform. Its own Win32 console code
