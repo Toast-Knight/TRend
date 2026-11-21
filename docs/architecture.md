@@ -1,4 +1,4 @@
-# Application Integration
+# Architecture
 
 > **TRend is a renderer that applications consume, not an application that
 > consumes the terminal.**
@@ -6,6 +6,29 @@
 TRend accepts decoded RGBA8 frames, scales them into terminal cells, and can
 encode those cells as incremental ANSI output. It is not a file manager, media
 browser, input loop, layout engine, terminal emulator, or full media player.
+
+## The Crates
+
+```text
+your program
+   |-- trend-term   (optional)  the terminal: size, resize, keys, mouse, restore
+   |-- trend-3d     (optional)  draws 3D into pixels
+   |-- trend-text   (optional)  draws scaled text into pixels
+   |-- trend-media / -image / -animation / -video (optional)  decode files into pixels
+   `-- trend        (core)      pixels -> cells -> ANSI bytes
+```
+
+Every optional crate depends on the core; the core depends on nothing, and no optional crate is
+needed to use it. Two paths lead through the core:
+
+- **Pixels you draw.** `Surface` owns a pixel buffer for the terminal's size, runs a
+  `CellEncoder` (half block, quadrant, sextant, Braille or density) over what changed, and
+  presents the difference. This is the path for games, visualisations, 3D and other renderers'
+  framebuffers.
+- **Pictures you decode.** `Renderer` fits, scales and letterboxes a decoded frame into
+  half-block cells for an `AnsiPresenter`. This is the path the media crates and the C ABI use.
+
+Both end in the same cells and the same presenter.
 
 ## Ownership
 
@@ -88,21 +111,22 @@ for their own borders and controls.
 
 ## Media Adapters and Platforms
 
-| Component | Windows | Linux/macOS | ARM/ARM64/Termux | Runtime dependency |
+| Component | Windows | Linux | Android | Runtime dependency |
 | --- | --- | --- | --- | --- |
-| `trend` core | Supported; tested x64 | Debian WSL2 x64 tested | ARM/ARM64 not tested | Rust standard library only |
-| PNG/JPEG adapter | Supported; tested x64 | Debian WSL2 x64 tested | Not tested | focused decoder crates |
-| GIF adapter | Supported; tested x64 | Debian WSL2 x64 tested | Not tested | focused GIF crate |
-| MP4/H.264 adapter | Media Foundation; tested x64 | No backend | No backend | Windows system Media Foundation |
+| `trend` core | Tested (x64) | Tested (x64, Debian under WSL2) | Device-checked by the maintainer | Rust standard library only |
+| `trend-term` | Run by the maintainer | Tested in a pseudo-terminal | Not tested | `crossterm` |
+| `trend-3d`, `trend-text` | Run by the maintainer through the examples | Tested (x64) | Not tested | none besides the core |
+| PNG, JPEG, GIF (BMP and TIFF decoders are included) | Tested | Tested | Images and animation device-checked | Rust decoder crates |
+| WebP (feature `webp`) | Experimental; tested | Experimental | Not tested | `image-webp` |
+| MP4/H.264 | Tested, through Media Foundation | No backend | Not implemented | Windows system decoders |
+| WebM and MKV | Experimental (features `webm`, `mkv`) | Experimental (`linux-webm`, `linux-mkv`, `linux-h264`) | Not implemented | Media Foundation; libvpx and OpenH264 |
+| AVI and MOV | Experimental (features `avi`, `mov`) | No backend | Not implemented | Media Foundation |
 
-The non-Windows video package builds an explicit unsupported-platform stub.
-Portable video previews therefore require a future platform adapter behind the
-same timestamped borrowed-RGBA contract. There is no global FFmpeg executable
-or GUI requirement, and adding one is not part of this experiment.
-
-WebP remains unsupported. Phase 6B, sharpening, and experimental glyph paths
-remain excluded. FAST/BALANCED/QUALITY continue to map to nearest, bilinear,
-and area sampling respectively.
+macOS and ARM desktops have not been tested. There is no FFmpeg
+dependency and no audio decoding. FAST, BALANCED and QUALITY in the tools map to nearest,
+bilinear and area sampling. [development-status.md](development-status.md) records what has
+been verified and when; the platform pages under [platforms/](platforms/windows.md) have the
+details.
 
 ## Python Laboratory
 
@@ -118,12 +142,13 @@ may use Rust, the C ABI, or another binding/bridge.
 
 ## Limitations
 
-- ANSI cursor addressing is required by the example TUI; the renderer itself
-  can still produce cells for non-ANSI presentation backends.
-- Active terminal capability probing is intentionally absent.
-- Video is currently Windows-only and silent.
+- The core never asks the terminal anything. Capabilities come from environment variables or
+  from the program; `trend-term` reports the size, and the cell's pixel size where the terminal
+  gives it, but does not yet probe for features.
+- Unicode block, sextant and Braille characters depend on the terminal's font. `Density::ASCII`
+  works everywhere.
+- Video is silent, and which containers work depends on the platform and the features built in.
 - The Python bridge protocol is a test interface, not a versioned public ABI.
-- Linux, macOS, ARM, ARM64, Termux, SSH, tmux, and screen require CI and device
-  validation before production support can be claimed.
-- Very small terminals may show application controls without requesting media;
-  the renderer is not asked to draw into an invalid or overlapping viewport.
+- macOS, ARM desktops, SSH, tmux and screen have not been validated.
+- Very small terminals may show an application's controls without room for media; that is the
+  application's layout to handle.

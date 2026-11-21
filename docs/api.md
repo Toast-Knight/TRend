@@ -9,18 +9,21 @@ terminal cells or ANSI bytes.
 
 | Package | Path | Public role |
 | --- | --- | --- |
-| `trend` | `src/` | Rendering, geometry, cells, ANSI, timing, queues, cache, resize, and C ABI |
+| `trend` | `src/` | Rendering, geometry, cells, ANSI, timing, cache, resize, and C ABI |
 | `trend-image` | `adapters/image/` | Bounded PNG and JPEG decoding; experimental WebP feature |
 | `trend-animation` | `adapters/animation/` | Bounded GIF and optional animated WebP decoding, compositing, and timeline control |
 | `trend-video` | `adapters/video/` | Bounded Windows MP4 plus experimental WebM/MKV and Linux Matroska decoding |
 | `trend-media` | `adapters/media/` | Unified file opening, metadata, frames, seeking, and preview sessions |
+| `trend-term` | `adapters/term/` | Terminal session: enter and restore, size and resize, keys, mouse, timed frame writes. See its [README](../adapters/term/README.md) |
+| `trend-3d` | `adapters/3d/` | Dependency-free software 3D: model loading, materials, environments, cameras. See its [README](../adapters/3d/README.md) |
+| `trend-text` | `adapters/text/` | Dependency-free scaled text drawn as pixels. See its [README](../adapters/text/README.md) |
 
 ## Core Rust API
 
 The crate root re-exports the main types. Lower-level helpers remain available
-through the public `cache`, `cell`, `color`, `dither`, `encode`, `experimental`,
-`ffi`, `framebuffer`, `geometry`, `pixel_buffer`, `queue`, `raster`, `renderer`,
-`resize`, `scale`, `terminal`, and `timing` modules.
+through the public `cache`, `cell`, `color`, `compose`, `dither`, `encode`,
+`ffi`, `framebuffer`, `geometry`, `pixel_buffer`, `raster`, `renderer`,
+`resize`, `scale`, `surface`, `terminal`, `text`, and `timing` modules.
 
 ### Input and Cells
 
@@ -137,7 +140,7 @@ and cancellation points are unchanged.
 - `AnsiPresenter::invalidate()` forgets what the terminal shows, so the next
   presentation redraws every cell (after other output overwrote the area).
 
-### Timing, Queues, Cache, and Resize
+### Timing, Cache, and Resize
 
 - `PlaybackClock` maps host wall time to media time and supports play, pause,
   seek, restart, and paused-state inspection.
@@ -145,8 +148,6 @@ and cancellation points are unchanged.
   play, pause, restart, time seeking, and frame seeking.
 - `FrameDecision::for_timestamp` returns `Wait`, `Present`, or `Drop` from a
   media timestamp and lateness threshold.
-- `BoundedQueue<T>` provides file-mode backpressure with `push_file` and
-  live-mode oldest-frame eviction with `push_live`, plus pop and clear.
 - `CellFrameCache<K>` is bounded by entry count and bytes and evicts the least
   recently used entries. `CacheInsert` reports the insertion outcome.
 - `ResizeCoalescer` assigns generations to viewport updates and retains only
@@ -159,12 +160,13 @@ media position, compare actual presentation timestamps, and use
 external; synchronization metadata and presentation timing remain part of
 TRend.
 
-### Pixel Buffers and Cell Encoders (Preview)
+### Pixel Buffers and Cell Encoders
 
-These additive APIs split rendering into stages so any application that can
-produce pixels can use TRend as its terminal output. They coexist with
-`Renderer`, which is unchanged. See
-[phase-0-plan.md](phase-0-plan.md) for the design and migration plan.
+These APIs split rendering into stages so any application that can produce
+pixels can use TRend as its terminal output. `Surface` (below) ties them
+together and is the place to start; `Renderer` remains for fitting decoded
+pictures into cells. The original design is recorded in
+[phase-0-plan.md](history/phase-0-plan.md).
 
 ```text
 app renderer or ImageSource -> PixelBuffer -> CellEncoder -> CellFrame/CellViewMut -> AnsiPresenter
@@ -468,14 +470,6 @@ All of these allocate nothing. `examples/hud_3d.rs` shows a software-rendered
 [readback-recipes.md](readback-recipes.md) for handing frames from wgpu,
 OpenGL, and CEF to a surface.
 
-### Experimental Glyph API
-
-`experimental::ExperimentalGlyphRenderer` exposes alternate multi-glyph
-rendering through frame, slice, and cancellable slice methods.
-`ExperimentalGlyphOptions`, `ExperimentalGlyphSet`, and `glyph_coverage`
-configure this path. It is experimental and is not the active production
-half-block renderer.
-
 ## Decoder APIs
 
 All decoder limits are caller-configurable and default to bounded dimensions,
@@ -601,7 +595,7 @@ checks results, error codes, and buffer-length rules at run time.
 
 The v1 ABI exposes only the legacy half-block `Renderer`. A v2 surface over
 `Surface` (encoders, layouts, regions, overlays, and presentation) is
-designed in [ffi-v2-design.md](ffi-v2-design.md) but not implemented; v1
+designed in [ffi-v2-design.md](design/ffi-v2-design.md) but not implemented; v1
 stays unchanged.
 
 ## Feature and Platform Matrix
@@ -638,7 +632,7 @@ positioned regions when layouts move or shrink.
 Terminal session handling (raw mode, the alternate screen, size and resize,
 input, and capability probing) is planned as an optional `trend-term` crate
 that the core never depends on; see
-[trend-term-design.md](trend-term-design.md).
+[trend-term-design.md](design/trend-term-design.md).
 
 ### Decoder Compatibility Requirements
 

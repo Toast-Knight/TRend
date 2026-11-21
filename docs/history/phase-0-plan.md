@@ -435,7 +435,7 @@ Estimated size: about 600 lines of source and about 500 lines of tests.
 
 ## After M1 (roadmap only)
 
-> Superseded by [architecture-roadmap.md](architecture-roadmap.md), which
+> Superseded by [architecture-roadmap.md](../architecture-roadmap.md), which
 > revises this order based on M1's measurements.
 
 | Milestone | Content |
@@ -446,7 +446,7 @@ Estimated size: about 600 lines of source and about 500 lines of tests.
 | M5: encoders | `Sextant`, `Braille`; `GlyphMatch` from `experimental.rs` |
 | M6: edges | `CellBackend` trait, `trend-term`, FFI v2, out-of-tree software-3D and HTML host examples |
 
-The Android MP4/H.264 backend in [development-status.md](development-status.md)
+The Android MP4/H.264 backend in [development-status.md](../development-status.md)
 doesn't depend on any of this and can be scheduled before or after M1.
 
 ## Decisions needed before M1 starts

@@ -34,6 +34,26 @@ focused on project facts, recent events, and actionable next work.
 
 ## Recent events
 
+### 2026-11-21: public API review before a first release
+
+- Removed from the core what nothing used: the `experimental` glyph matcher (failed real-viewer
+  acceptance; with its example and font-validation script) and `BoundedQueue`. Output, goldens
+  and the C ABI are unchanged.
+- `trend-3d` exports four loading functions instead of nine; `trend-term`'s `SessionOptions`
+  uses builder methods. Types in the three new crates that will grow are `#[non_exhaustive]`.
+- Kept after review, although little used: `ResizeCoalescer` (pairs with render generations and
+  cancellation), `FrameDecision` (part of the documented audio/video sync interface),
+  `CellFrameCache`, the legacy `Renderer` path (the media crates, the C ABI and the goldens rest
+  on it), and `tools/ui-lab`.
+- The APIs of the core's remaining items and of the image, animation, video and media crates
+  were not changed.
+- Documentation reorganised: user guides at the top of `docs/`, design notes in `docs/design/`,
+  historical records in `docs/history/`.
+- Open for the maintainer: whether `tools/ui-lab` (a Windows-only GUI experiment) belongs in the
+  public repository; a minimum supported Rust version (the code uses `let` chains, so at least
+  1.88, not verified on older toolchains); `compact_indexed_colors` as a default (see
+  [api.md](api.md)); crates.io names and publishing.
+
 ### 2026-11-21: the test viewer runs on `trend-term`
 
 - `tools/test-viewer` uses `trend_term::Session` for everything that owns the terminal, on
@@ -64,7 +84,7 @@ focused on project facts, recent events, and actionable next work.
   - `trend-text` (no dependencies besides `trend`): scaled text drawn as pixels, with a built-in
     pixel font and a TrueType rasterizer.
   - `trend-term` (crossterm backend): the terminal session of
-    [trend-term-design.md](trend-term-design.md): enter and restore, size and resize, keys with
+    [trend-term-design.md](design/trend-term-design.md): enter and restore, size and resize, keys with
     held-key state, mouse, and timed frame writes. Examples: `starter` (a complete program in
     about 50 lines) and `showcase` (3D, text and the session together).
 - The core (`src/`) is unchanged by these crates.
@@ -121,8 +141,8 @@ focused on project facts, recent events, and actionable next work.
   borrowed BGRA, bottom-up, premultiplied frames through TRend), a strict
   C11 header consumer (`scripts/c-consumer-smoke.sh`), a framebuffer layout
   table in [readback-recipes.md](readback-recipes.md), and the designs
-  [ffi-v2-design.md](ffi-v2-design.md) and
-  [trend-term-design.md](trend-term-design.md). Neither design is
+  [ffi-v2-design.md](design/ffi-v2-design.md) and
+  [trend-term-design.md](design/trend-term-design.md). Neither design is
   implemented.
 - 12 injected bugs in the M6 changes were all caught.
 - Not measured here: real terminal throughput (no terminal in the
@@ -229,7 +249,7 @@ focused on project facts, recent events, and actionable next work.
 ### 2026-09-25: M1 pipeline proof
 
 - Decided that the renderer-architecture track (M1) precedes the Android video
-  milestone. See [phase-0-plan.md](phase-0-plan.md).
+  milestone. See [phase-0-plan.md](history/phase-0-plan.md).
 - Recorded golden baselines of `Renderer` cells and `AnsiPresenter` bytes
   before any source change (`tests/golden_render.rs`, `tests/golden_ansi.rs`).
 - Added `PixelBuffer`, `RasterSpec`, `ImageSource`, `CellEncoder`,

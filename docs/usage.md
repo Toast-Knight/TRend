@@ -4,6 +4,27 @@ TRend can be used as a Rust rendering library, a C ABI, a media viewer, or a
 subprocess bridge. The renderer never owns an application event loop, terminal
 layout, input, audio, or playback policy.
 
+## Draw your own pixels
+
+For anything you draw yourself (a game, a visualisation, a 3D view, another renderer's
+output), use a `Surface`. It owns a pixel buffer sized for the terminal and the encoder you
+chose, encodes only the cells whose pixels changed, and gives you the bytes to write:
+
+```rust
+let mut surface = Surface::new(HalfBlock, viewport, capabilities)?;
+surface.draw(|mut pixels, spec| {
+    // pixels: RGBA rows, spec.width() x spec.height(); spec.pixel_aspect() is a pixel's shape
+})?;
+stdout.write_all(surface.present_bytes())?;
+```
+
+The optional [`trend-term`](../adapters/term/README.md) crate supplies the terminal's size,
+resize, keys and mouse, and restores the terminal when your program ends; its `starter` example
+is the complete loop. [`trend-3d`](../adapters/3d/README.md) and
+[`trend-text`](../adapters/text/README.md) draw into the same pixels. To show frames from wgpu,
+OpenGL or another engine without copying them, see
+[readback-recipes.md](readback-recipes.md) and `examples/external-renderer`.
+
 ## Render a static image
 
 The smallest complete Rust example decodes a PNG, borrows its RGBA frame,
@@ -63,12 +84,14 @@ another host.
 
 ## Embed in Rust
 
-Use path dependencies while developing alongside this repository:
+TRend is not on crates.io yet. Depend on it from the repository, or by path when developing
+alongside a checkout:
 
 ```toml
 [dependencies]
-trend = { path = "../Terminal renderer - TRend" }
-trend-image = { path = "../Terminal renderer - TRend/adapters/image" }
+trend = { git = "https://github.com/DigitalDolos/TRend" }
+trend-image = { git = "https://github.com/DigitalDolos/TRend" }
+# or: trend = { path = "../TRend" }
 ```
 
 Use `trend-image` for PNG/JPEG/BMP/TIFF, `trend-animation` for GIF and optional

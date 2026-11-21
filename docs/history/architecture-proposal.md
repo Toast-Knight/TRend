@@ -530,7 +530,7 @@ Each phase is additive and leaves the workspace releasable.
    `software-3d` and `layers` examples, C ABI v2.
 
 The Android MP4/H.264 milestone in
-[development-status.md](development-status.md) is independent. It can land
+[development-status.md](../development-status.md) is independent. It can land
 before phase 5 against today's `VideoFrame` contract, then move behind
 `VideoBackend` with the other backends.
 

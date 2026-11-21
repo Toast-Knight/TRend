@@ -2,9 +2,9 @@
 
 - Status: **M2–M6 implemented (not committed); M7 proposed**
 - Date: 2026-09-25, updated 2026-09-26 after M6
-- Supersedes the "After M1" table in [phase-0-plan.md](phase-0-plan.md)
-- Background: [architecture-audit.md](architecture-audit.md),
-  [architecture-proposal.md](architecture-proposal.md), M1 results in
+- Supersedes the "After M1" table in [phase-0-plan.md](history/phase-0-plan.md)
+- Background: [architecture-audit.md](history/architecture-audit.md),
+  [architecture-proposal.md](history/architecture-proposal.md), M1 results in
   [development-status.md](development-status.md)
 
 ## 1. Purpose
@@ -430,12 +430,12 @@ noticeably less code, with identical output.
 >   was found and fixed; compact output is now cheaper than the default
 >   everywhere and 1.7–5.4× smaller. Decision: opt-in now, default at the
 >   next output-compatibility boundary (see [api.md](api.md)).
-> - **FFI v2: designed, not built.** [ffi-v2-design.md](ffi-v2-design.md)
+> - **FFI v2: designed, not built.** [ffi-v2-design.md](design/ffi-v2-design.md)
 >   proposes about 16 functions over an opaque `Surface` handle. Freezing
 >   it before a real C host exercises it would lock in guesses; v1 is
 >   unchanged and now has a strict C11 consumer test.
 > - **`trend-term`: designed, not built.**
->   [trend-term-design.md](trend-term-design.md) draws the line: the core
+>   [trend-term-design.md](design/trend-term-design.md) draws the line: the core
 >   keeps capability policy and all output; raw mode, size, resize, input,
 >   and probing go to an optional crate. The test viewer's hand-rolled
 >   session layer is the evidence.
@@ -456,7 +456,7 @@ M6 showed TRend's own cost fits the budget; what remains unknown is the
 terminal. M7 builds the piece that makes TRend usable in a real terminal
 and, with it, measures the terminal.
 
-- **`trend-term`, stages 1–2** of [trend-term-design.md](trend-term-design.md):
+- **`trend-term`, stages 1–2** of [trend-term-design.md](design/trend-term-design.md):
   session enter/restore (including after a panic), size and resize, keys;
   then DECRQM 2026 and cell-pixel-size probing. Port the test viewer and
   the external-renderer example onto it.

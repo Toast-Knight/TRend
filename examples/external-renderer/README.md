@@ -23,7 +23,7 @@ Options: `--encoder half|quadrant|sextant|braille`, `--size COLSxROWS`,
 Without `--size`, the size comes from `COLUMNS`/`LINES` (one row is kept
 for the summary) or defaults to 100×30. Detecting the terminal size
 belongs to a terminal-session layer (see
-[docs/trend-term-design.md](../../docs/trend-term-design.md)), not to
+[docs/trend-term-design.md](../../docs/design/trend-term-design.md)), not to
 TRend's core.
 
 At exit it prints the median time of each stage against the 33.3 ms

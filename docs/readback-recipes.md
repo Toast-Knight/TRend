@@ -88,7 +88,7 @@ With windowless rendering, CEF calls `CefRenderHandler::OnPaint` with a BGRA
 buffer, upper-left origin and `width * 4` stride, plus the rectangles that
 changed. Run the browser in a separate host program. That program links CEF
 and uses TRend from Rust; the core's C ABI doesn't expose `Surface` yet
-(see [ffi-v2-design.md](ffi-v2-design.md) for the planned C surface).
+(see [ffi-v2-design.md](design/ffi-v2-design.md) for the planned C surface).
 
 - In `GetViewRect`, report the surface's pixel size, and set the device
   scale factor to 1 in `GetScreenInfo`, so frames match the spec exactly.

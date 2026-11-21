@@ -9,9 +9,9 @@ Companion document: [architecture-proposal.md](architecture-proposal.md).
   paths of adapters, tools, and platform video backends. Tests were not run
   during the audit.
 
-For ownership rules and host integration, see [architecture.md](architecture.md).
+For ownership rules and host integration, see [architecture.md](../architecture.md).
 For current platform status and the Android milestone, see
-[development-status.md](development-status.md).
+[development-status.md](../development-status.md).
 
 ## What TRend is
 
@@ -76,7 +76,7 @@ file ─► trend-media (detect ─► decoder) ─► PixelFrameView (borrowed 
 - **C ABI:** `trend_version`, `trend_cell_size`, `trend_render_rgba8`,
   `trend_render_rgba8_ex`. It renders into cells only; ANSI presentation is not
   exposed.
-- **Bridge protocol:** see [bridge-protocol.md](bridge-protocol.md). It's a test
+- **Bridge protocol:** see [bridge-protocol.md](../bridge-protocol.md). It's a test
   interface, not a versioned ABI.
 
 ## Dependencies
@@ -131,9 +131,9 @@ only changes the `Viewport`; the source is not reopened.
 - **Two Win32 FFI layers** in tools (console and GDI).
 - **`terminal.rs` has too many jobs:** environment/TTY detection, ANSI
   encoding, cell diffing, and a render+present+timing helper (`render_at`).
-- **Stale documents.** [architecture.md](architecture.md) says WebP is
+- **Stale documents.** [architecture.md](../architecture.md) says WebP is
   unsupported and video is Windows-only, contradicting
-  [development-status.md](development-status.md).
+  [development-status.md](../development-status.md).
   [repository-audit.md](repository-audit.md) references pre-cleanup paths.
 - **Local weight.** The working folder holds `android-ndk-r27d/` (git-ignored),
   `dist/`, and `target/`. The core's `cdylib` crate type makes every dependent

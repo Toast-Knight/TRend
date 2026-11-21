@@ -4,6 +4,38 @@ All notable changes to TRend are documented here.
 
 ## Unreleased
 
+### Removed and changed before the first release (breaking)
+
+- Core: removed the `experimental` module (`ExperimentalGlyphRenderer`, `ExperimentalGlyphSet`,
+  `ExperimentalGlyphOptions`, `glyph_coverage`). The glyph matcher failed acceptance in real
+  terminals and nothing used it; the quadrant, sextant and Braille encoders cover what it tried
+  to do. Its `fidelity_baseline` example and `tools/fidelity-font-validation.ps1` went with it.
+  The core is about 1,060 lines smaller.
+- Core: removed `BoundedQueue` (the `queue` module). Nothing in the workspace used it, and
+  queueing frames is the host's scheduling, which the core leaves to the host.
+- `trend-3d`: the format-specific `parse_gltf`, `parse_obj`, `parse_obj_with`, `parse_ply` and
+  `parse_stl` are no longer exported; `load`, `load_with`, `load_from_bytes` and
+  `load_from_bytes_with` are the four ways in. `ModelFormat`, `EnvironmentPreset`, `RenderMode`,
+  `Background`, `FrameStats` and `MeshStats` are `#[non_exhaustive]`, so later additions do not
+  break programs.
+- `trend-term`: `SessionOptions` is built with `SessionOptions::new()` and `with_mouse`,
+  `with_title`, `with_key_releases`, `with_alternate_screen` and `with_hidden_cursor`, like the
+  core's `OutputOptions`. It, `Event`, `Key`, `MouseAction`, `MouseButton`, `TerminalInfo` and
+  `FrameTiming` are `#[non_exhaustive]`.
+- Output is unchanged: every golden test passes without re-recording, and the C ABI is the same.
+
+### Documentation
+
+- The README is rewritten for people using the library: what each crate gives and what it
+  depends on, the two ways through the core, the cell encoders, requirements and examples.
+- Records of how the project got here moved to `docs/history/`, design proposals to
+  `docs/design/`, and `docs/README.md` indexes everything. The architecture, usage,
+  getting-started and API pages no longer describe removed or outdated behavior.
+- The library crates carry `keywords` and `categories` for a later crates.io release;
+  publishing stays disabled.
+
+### Added
+
 - The test viewer now runs on `trend-term` on every platform. Its own Win32 console code
   (`unsafe` declarations for the console and `msvcrt`) and its direct crossterm use are gone,
   about 170 lines; behavior and controls are the same, a resize redraws at once, Ctrl+C quits,

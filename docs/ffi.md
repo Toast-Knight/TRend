@@ -31,5 +31,5 @@ time and every export at run time.
 
 These four functions wrap the legacy half-block renderer. A C surface for
 `Surface`, the other encoders, borrowed layouts, regions, overlays, and
-presentation is designed in [ffi-v2-design.md](ffi-v2-design.md) and not yet
+presentation is designed in [ffi-v2-design.md](design/ffi-v2-design.md) and not yet
 implemented; this ABI stays as it is.

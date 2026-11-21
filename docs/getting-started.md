@@ -12,9 +12,20 @@
 Install Rust from [rustup.rs](https://rustup.rs/) and confirm `rustc --version`
 and `cargo --version` work.
 
-## First render
+## First program
 
 From the repository root:
+
+```powershell
+cargo run --release -p trend-term --example starter
+```
+
+An animated picture fills the terminal and follows its size; the arrow keys move a square and
+`Esc` quits. [The source](../adapters/term/examples/starter.rs) is about fifty lines: copy it
+into your own project and change its `draw` closure. `cargo run --release -p trend-term --example
+showcase` adds 3D, scaled text and the mouse.
+
+## First picture
 
 ```powershell
 cargo build --workspace

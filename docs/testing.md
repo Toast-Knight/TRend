@@ -71,10 +71,6 @@ Resize the terminal window at any time to exercise rerendering from the same
 decoded frame. The viewer is intentionally a developer harness, not an
 application UI.
 
-The experimental glyph matcher failed real-viewer acceptance and is not exposed
-by this harness. Its ideal-mask benchmark does not establish actual terminal
-glyph quality.
-
 ## Python Application Integration Lab
 
 `examples/python-tui/trend_tui.py` is a separate stdlib-only example application. It

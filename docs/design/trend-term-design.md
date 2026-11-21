@@ -56,7 +56,7 @@ engine's console) keeps using the core alone.
   most terminals.
 - Output rate: full-motion truecolor video at 200×60 produces about
   13 MB/s at 30 fps, and 31 MB/s at 320×90 (see
-  [benchmarks.md](benchmarks.md), M6). Whether a terminal absorbs that is
+  [benchmarks.md](../benchmarks.md), M6). Whether a terminal absorbs that is
   a property of the terminal, not of TRend, and nothing measures it today.
   The `external-renderer` host times `write_all` + `flush` per frame as a
   first step.

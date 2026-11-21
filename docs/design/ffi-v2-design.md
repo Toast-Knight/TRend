@@ -24,7 +24,7 @@ nothing TRend gained in M1–M5:
 
 A C, C++, Python (ctypes/cffi), C#, or Go host today reimplements the
 presenter, or stays on the legacy path. The CEF host in
-[readback-recipes.md](readback-recipes.md) has to be written in Rust.
+[readback-recipes.md](../readback-recipes.md) has to be written in Rust.
 
 ## 2. Goals and non-goals
 
@@ -227,7 +227,7 @@ In total: about 16 functions and 8 structs, all flat, fixed-size, and
 - **Allocation.** `create` and growing `configure` allocate. Encoding,
   blending, text, and presentation do not, once the output buffer has
   grown to a frame's size (measured: 0 allocations per frame; see
-  [benchmarks.md](benchmarks.md)).
+  [benchmarks.md](../benchmarks.md)).
 - **Borrowed memory.** Frames are read only during the call. Pointers
   returned by `pixels`, `cells`, and `present` are invalidated by the next
   `configure`, `present`, or `destroy` on that surface.
